@@ -36,15 +36,16 @@ Note: OpenStock is community-built and not a brokerage. Market data may be delay
 3. ⚙️ [Tech Stack](#tech-stack)
 4. 🔋 [Features](#features)
 5. 🤸 [Quick Start](#quick-start)
-6. 🐳 [Docker Setup](#docker-setup)
-7. 🔐 [Environment Variables](#environment-variables)
-8. 🧱 [Project Structure](#project-structure)
-9. 📡 [Data & Integrations](#data--integrations)
-10. 🧪 [Scripts & Tooling](#scripts--tooling)
-11. 🤝 [Contributing](#contributing)
-12. 🛡️ [Security](#security)
-13. 📜 [License](#license)
-14. 🙏 [Acknowledgements](#acknowledgements)
+6. ☁️ [Netlify 部署](#netlify-%E9%83%A8%E7%BD%B2)
+7. 🐳 [Docker Setup](#docker-setup)
+8. 🔐 [Environment Variables](#environment-variables)
+9. 🧱 [Project Structure](#project-structure)
+10. 📡 [Data & Integrations](#data--integrations)
+11. 🧪 [Scripts & Tooling](#scripts--tooling)
+12. 🤝 [Contributing](#contributing)
+13. 🛡️ [Security](#security)
+14. 📜 [License](#license)
+15. 🙏 [Acknowledgements](#acknowledgements)
 
 ## ✨ Introduction
 
@@ -157,6 +158,29 @@ Run Inngest locally (workflows, cron, AI)
 ```bash
 npx inngest-cli@latest dev
 ```
+
+## ☁️ Netlify 部署 <a name="netlify-部署"></a>
+
+以下流程已針對一鍵部署優化，適用於 Netlify 免費方案與台灣使用者流量需求：
+
+1. **初始化專案來源**
+   - 將此專案複製到自己的 Git 儲存庫（Fork 或新建私有庫皆可）。
+   - 確認 `package.json` 的 `build` 指令為 `npm run build`，Netlify 會自動執行此指令並透過 `@netlify/plugin-nextjs` 產生無伺服器函式。
+2. **建立 Netlify 網站**
+   - 登入 Netlify 後選擇 *Add new site → Import an existing project*。
+   - 授權連接到 Git 提供者（GitHub、GitLab 或 Bitbucket）並挑選專案儲存庫。
+3. **設定建置參數**
+   - **Build command**：`npm run build`
+   - **Publish directory**：`.next`
+   - **Node version**：在 *Site settings → Build & deploy → Environment → Environment variables* 加入 `NODE_VERSION = 20`（已於 `netlify.toml` 中預設）。
+   - Netlify 會依據 `netlify.toml` 自動安裝 `@netlify/plugin-nextjs`，若要在本地模擬 Netlify Functions，可另行執行 `npm install -D @netlify/plugin-nextjs`。
+4. **環境變數**
+   - 於 Netlify 後台新增 `.env` 中使用到的每個變數，例如 `MONGODB_URI`、`FINNHUB_API_KEY`、`BETTER_AUTH_SECRET` 等，確保與本地設定一致。
+5. **部署與驗證**
+   - 點選 *Deploy site* 後，Netlify 會自動安裝依賴並建置。
+   - 建置完成後使用部署後的 URL 驗證主要使用者旅程（登入、看盤、通知設定）。若需背景工作，可啟用 Netlify Scheduled Functions 或保留 Inngest 雲端方案。
+
+> 提醒：若需自動觸發 Inngest、Finnhub 或郵件通知，請確保外部服務允許來自 Netlify Functions 的請求，並於服務端設定對應的 Webhook URL。
 
 Build & start (production)
 ```bash
