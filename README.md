@@ -167,6 +167,26 @@ npm run build && npm start
 
 Open http://localhost:3000 to view the app.
 
+## 🚀 Netlify 一鍵部署
+
+想在 Netlify 上快速體驗 OpenStock，可以依照以下步驟完成一鍵部署：
+
+1. **Fork 或匯入程式碼**：將本專案複製到自己的 GitHub 倉庫，確保 Netlify 能夠拉取程式碼。
+2. **點擊部署按鈕**：
+   [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/your-account/OpenStock)
+   > 將網址中的 `your-account` 換成你的 GitHub 帳號或組織名稱。
+3. **設定環境變數**：在 Netlify 專案儀表板中新增以下必要變數：
+   - `NEXT_PUBLIC_APP_URL`：你的 Netlify 網域，例如 `https://your-site.netlify.app`
+   - `MONGODB_URI`：MongoDB 連線字串（建議使用 MongoDB Atlas）
+   - `FINNHUB_API_KEY` 與 `FINNHUB_BASE_URL`：Finnhub 市場資料 API
+   - `BETTER_AUTH_SECRET`、`BETTER_AUTH_URL`：Better Auth 所需的密鑰與站點網址
+   - `INNGEST_EVENT_KEY`（可選）：若需啟用 Inngest 工作流程
+   - 其他郵件或 AI 服務相關密鑰（請參考 [Environment Variables](#environment-variables) 章節）
+4. **部署設定**：`netlify.toml` 已預先設定 `npm run build` 指令、Node.js 20 版本，以及 Next.js 外掛。Netlify 會自動安裝 `@netlify/plugin-nextjs` 並生成對應函式供 SSR 使用。
+5. **完成部署並驗證**：部署完成後，透過 Netlify 網頁執行登入、觀察者名單、個股頁面等核心流程，確認一切正常。
+
+> 若需要自訂網域或啟用 Netlify Edge Functions，可在 Netlify 儀表板中額外設定。建議啟用自動化部署流程，確保每次推送都能觸發 CI/CD。
+
 ## 🐳 Docker Setup
 
 You can run OpenStock and MongoDB easily with Docker Compose.
