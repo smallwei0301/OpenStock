@@ -1,0 +1,30 @@
+[build]
+command = "npm run build"
+publish = ".next"
+
+[build.environment]
+NODE_VERSION = "20"
+NEXT_TELEMETRY_DISABLED = "1"
+
+[functions]
+node_bundler = "esbuild"
+external_node_modules = [
+  "mongodb",
+  "mongoose",
+  "nodemailer"
+]
+included_files = [
+  "app/api/**",
+  "database/**",
+  "lib/**",
+  "components/**",
+  "public/assets/**"
+]
+
+[[plugins]]
+package = "@netlify/plugin-nextjs"
+
+[dev]
+command = "npm run dev"
+port = 3000
+

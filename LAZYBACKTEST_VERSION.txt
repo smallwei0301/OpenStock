@@ -1,0 +1,3 @@
+Lazybacktest Deployment Package
+Version: LB-NETLIFY-20250307
+Description: Netlify-ready configuration baseline for OpenStock.

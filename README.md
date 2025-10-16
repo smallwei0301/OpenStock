@@ -36,15 +36,16 @@ Note: OpenStock is community-built and not a brokerage. Market data may be delay
 3. ⚙️ [Tech Stack](#tech-stack)
 4. 🔋 [Features](#features)
 5. 🤸 [Quick Start](#quick-start)
-6. 🐳 [Docker Setup](#docker-setup)
-7. 🔐 [Environment Variables](#environment-variables)
-8. 🧱 [Project Structure](#project-structure)
-9. 📡 [Data & Integrations](#data--integrations)
-10. 🧪 [Scripts & Tooling](#scripts--tooling)
-11. 🤝 [Contributing](#contributing)
-12. 🛡️ [Security](#security)
-13. 📜 [License](#license)
-14. 🙏 [Acknowledgements](#acknowledgements)
+6. 🚀 [Deploy to Netlify](#deploy-to-netlify)
+7. 🐳 [Docker Setup](#docker-setup)
+8. 🔐 [Environment Variables](#environment-variables)
+9. 🧱 [Project Structure](#project-structure)
+10. 📡 [Data & Integrations](#data--integrations)
+11. 🧪 [Scripts & Tooling](#scripts--tooling)
+12. 🤝 [Contributing](#contributing)
+13. 🛡️ [Security](#security)
+14. 📜 [License](#license)
+15. 🙏 [Acknowledgements](#acknowledgements)
 
 ## ✨ Introduction
 
@@ -167,6 +168,41 @@ npm run build && npm start
 
 Open http://localhost:3000 to view the app.
 
+## 🚀 Deploy to Netlify <a name="deploy-to-netlify"></a>
+
+One-click deploy (replace `YOUR_GITHUB_USERNAME` with your GitHub handle):
+
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/YOUR_GITHUB_USERNAME/OpenStock)
+
+### Why it works
+
+- `netlify.toml` defines the build, runtime, and Next.js plugin configuration required for ISR, Server Actions, and middleware to run on Netlify Functions.
+- Critical server-side packages (`mongodb`, `mongoose`, `nodemailer`) are pre-bundled, and `LAZYBACKTEST_VERSION` tracks deployment-ready revisions.
+- `.env.example` enumerates every secret the platform expects so you can copy values directly into Netlify UI.
+
+### Manual setup steps
+
+1. **Fork or clone** this repository into your own GitHub organization to ensure you control updates.
+2. **Create a new Netlify site** and pick “Import from Git”. Choose your fork and the main branch (or whichever branch you want to deploy).
+3. Netlify auto-detects the build command (`npm run build`) and publish directory (`.next`) from `netlify.toml`; no manual overrides needed.
+4. **Add environment variables** in Netlify → Site Configuration → Environment variables. Use `.env.example` as the canonical reference. At minimum configure:
+   - `MONGODB_URI` pointing to MongoDB Atlas (allow Netlify IP ranges),
+   - `BETTER_AUTH_SECRET` (a long random string) and `BETTER_AUTH_URL` (your Netlify domain),
+   - `FINNHUB_API_KEY` (or `NEXT_PUBLIC_FINNHUB_API_KEY` if exposing client-side),
+   - Email credentials (`NODEMAILER_EMAIL`, `NODEMAILER_PASSWORD`), and any optional automation keys.
+5. **Trigger “Deploy site”**. Netlify installs dependencies, runs the Next.js build with the official `@netlify/plugin-nextjs`, and provisions edge/serverless functions automatically.
+6. **Verify runtime behaviour**:
+   - Visit `/sign-in` to create an account and ensure Better Auth cookies are issued.
+   - Add watchlist entries to confirm MongoDB writes succeed.
+   - Inspect the Netlify Functions log for `connectToDatabase` messages to confirm connection reuse.
+
+### Post-deployment recommendations
+
+- Enable [Netlify Environment Variables](https://docs.netlify.com/environment-variables/overview/) scopes for “Production” and “Preview” to keep secrets separated.
+- Set `BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` to your final domain (custom domain or `*.netlify.app`).
+- Configure background jobs (Inngest) with production keys only after validating local development flows.
+- Update `LAZYBACKTEST_VERSION` whenever you change deployment-critical files so teammates know which bundle is live.
+
 ## 🐳 Docker Setup
 
 You can run OpenStock and MongoDB easily with Docker Compose.
@@ -228,6 +264,7 @@ Create `.env` at the project root. Choose either a hosted MongoDB (Atlas) URI or
 Hosted (MongoDB Atlas):
 ```env
 # Core
+LAZYBACKTEST_VERSION=LB-NETLIFY-20250307
 NODE_ENV=development
 
 # Database (Atlas)
@@ -254,6 +291,7 @@ NODEMAILER_PASSWORD=your_gmail_app_password
 Local (Docker Compose) MongoDB:
 ```env
 # Core
+LAZYBACKTEST_VERSION=LB-NETLIFY-20250307
 NODE_ENV=development
 
 # Database (Docker)
@@ -281,6 +319,7 @@ Notes
 - If using `NEXT_PUBLIC_` variables, remember they are exposed to the browser.
 - In production, prefer a dedicated SMTP provider over a personal Gmail.
 - Do not hardcode secrets in the Dockerfile; use `.env` and Compose.
+- Update `LAZYBACKTEST_VERSION` whenever you change deployment-related configuration so Netlify builds stay traceable.
 
 ## 🧱 Project Structure
 
@@ -319,6 +358,9 @@ next.config.ts          # i.ibb.co image domain allowlist
 postcss.config.mjs      # Tailwind v4 postcss setup
 components.json         # shadcn config
 public/assets/images/   # logos and screenshots
+netlify.toml            # Netlify build + runtime configuration
+.env.example            # Canonical environment template for deployments
+LAZYBACKTEST_VERSION.txt # Lazybacktest Netlify bundle identifier
 ```
 
 ## 📡 Data & Integrations
