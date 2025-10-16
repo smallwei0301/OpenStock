@@ -98,8 +98,8 @@ export const sendDailyNewsSummary = inngest.createFunction(
                 const newsContent = (part && 'text' in part ? part.text : null) || '目前沒有市場新聞。'
 
                 userNewsSummaries.push({ user, newsContent });
-            } catch (e) {
-                console.error('Failed to summarize news for : ', user.email);
+            } catch (error) {
+                console.error('Failed to summarize news for : ', user.email, error);
                 userNewsSummaries.push({ user, newsContent: null });
             }
         }

@@ -46,7 +46,7 @@ export default function SearchCommand({ renderAs = 'button', label = '新增股�
 
     useEffect(() => {
         debouncedSearch();
-    }, [searchTerm]);
+    }, [searchTerm, debouncedSearch]);
 
     const handleSelectStock = () => {
         setOpen(false);
@@ -87,7 +87,7 @@ export default function SearchCommand({ renderAs = 'button', label = '新增股�
                                 {isSearchMode ? '搜尋結果' : '熱門股票'}
                                 {` `}({displayStocks?.length || 0})
                             </div>
-                            {displayStocks?.map((stock, i) => (
+                            {displayStocks?.map((stock) => (
                                 <li key={stock.symbol} className="search-item">
                                     <Link
                                         href={`/stocks/${stock.symbol}`}

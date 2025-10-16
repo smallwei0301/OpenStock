@@ -1,7 +1,7 @@
 export const NAV_ITEMS = [
     { href: '/', label: '儀表板' },
     { href: '/search', label: '搜尋' },
-    // { href: '/watchlist', label: 'Watchlist' },
+    { href: '/watchlist', label: '自選清單' },
 ];
 
 // Sign-up form select options
