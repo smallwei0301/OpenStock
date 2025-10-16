@@ -14,7 +14,7 @@ const Header = async ({ user }: { user: User | null }) => {
                 <Link href="/" className="flex items-center justify-center gap-2">
                     <Image
                         src="https://i.ibb.co/r28VWPjS/Screenshot-2025-10-04-123317-Picsart-Ai-Image-Enhancer-removebg-preview.png"
-                        alt="OpenStock"
+                        alt="OpenStock 標誌"
                         width={200}
                         height={50}
                     />
@@ -28,7 +28,7 @@ const Header = async ({ user }: { user: User | null }) => {
                 ) : (
                     <Link href="/sign-in">
                         <Button variant="outline" className="bg-gray-800 text-gray-100 border-gray-700 hover:bg-gray-700">
-                            Sign in
+                            登入
                         </Button>
                     </Link>
                 )}

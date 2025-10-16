@@ -34,7 +34,7 @@ export const sendSignUpEmail = inngest.createFunction(
 
         await step.run('send-welcome-email', async () => {
             const part = response.candidates?.[0]?.content?.parts?.[0];
-            const introText = (part && 'text' in part ? part.text : null) ||'Thanks for joining Openstock. You now have the tools to track markets and make smarter moves.'
+            const introText = (part && 'text' in part ? part.text : null) || '感謝加入 OpenStock，現在就掌握市場脈動，做出更聰明的投資決策。'
 
             const { data: { email, name } } = event;
 
@@ -43,7 +43,7 @@ export const sendSignUpEmail = inngest.createFunction(
 
         return {
             success: true,
-            message: 'Welcome email sent successfully'
+            message: '歡迎郵件已成功寄出'
         }
     }
 )
@@ -55,7 +55,7 @@ export const sendDailyNewsSummary = inngest.createFunction(
         // Step #1: Get all users for news delivery
         const users = await step.run('get-all-users', getAllUsersForNewsEmail)
 
-        if(!users || users.length === 0) return { success: false, message: 'No users found for news email' };
+        if(!users || users.length === 0) return { success: false, message: '找不到需要寄送新聞摘要的使用者' };
 
         // Step #2: For each user, get watchlist symbols -> fetch news (fallback to general)
         const results = await step.run('fetch-user-news', async () => {
@@ -95,7 +95,7 @@ export const sendDailyNewsSummary = inngest.createFunction(
                 });
 
                 const part = response.candidates?.[0]?.content?.parts?.[0];
-                const newsContent = (part && 'text' in part ? part.text : null) || 'No market news.'
+                const newsContent = (part && 'text' in part ? part.text : null) || '目前沒有市場新聞。'
 
                 userNewsSummaries.push({ user, newsContent });
             } catch (e) {
@@ -115,6 +115,6 @@ export const sendDailyNewsSummary = inngest.createFunction(
             )
         })
 
-        return { success: true, message: 'Daily news summary emails sent successfully' }
+        return { success: true, message: '每日新聞摘要郵件已成功寄出' }
     }
 )

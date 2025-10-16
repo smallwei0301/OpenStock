@@ -7,7 +7,7 @@ import { headers } from "next/headers";
 export const signUpWithEmail = async ({ email, password, fullName, country, investmentGoals, riskTolerance, preferredIndustry }: SignUpFormData) => {
     try {
         if (!isAuthConfigured()) {
-            return { success: false, error: 'Authentication is not configured' };
+            return { success: false, error: '驗證服務尚未啟用' };
         }
 
         const auth = await getAuth();
@@ -22,15 +22,15 @@ export const signUpWithEmail = async ({ email, password, fullName, country, inve
 
         return { success: true, data: response };
     } catch (e) {
-        console.log('Sign up failed', e);
-        return { success: false, error: 'Sign up failed' };
+        console.log('註冊失敗', e);
+        return { success: false, error: '註冊失敗' };
     }
 };
 
 export const signInWithEmail = async ({ email, password }: SignInFormData) => {
     try {
         if (!isAuthConfigured()) {
-            return { success: false, error: 'Authentication is not configured' };
+            return { success: false, error: '驗證服務尚未啟用' };
         }
 
         const auth = await getAuth();
@@ -38,21 +38,21 @@ export const signInWithEmail = async ({ email, password }: SignInFormData) => {
 
         return { success: true, data: response };
     } catch (e) {
-        console.log('Sign in failed', e);
-        return { success: false, error: 'Sign in failed' };
+        console.log('登入失敗', e);
+        return { success: false, error: '登入失敗' };
     }
 };
 
 export const signOut = async () => {
     try {
         if (!isAuthConfigured()) {
-            return { success: false, error: 'Authentication is not configured' };
+            return { success: false, error: '驗證服務尚未啟用' };
         }
 
         const auth = await getAuth();
         await auth.api.signOut({ headers: await headers() });
     } catch (e) {
-        console.log('Sign out failed', e);
-        return { success: false, error: 'Sign out failed' };
+        console.log('登出失敗', e);
+        return { success: false, error: '登出失敗' };
     }
 };

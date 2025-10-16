@@ -25,7 +25,7 @@ const SignUp = () => {
             fullName: '',
             email: '',
             password: '',
-            country: 'IN',
+            country: 'TW',
             investmentGoals: 'Growth',
             riskTolerance: 'Medium',
             preferredIndustry: 'Technology'
@@ -40,59 +40,59 @@ const SignUp = () => {
                 router.push('/');
                 return;
             }
-            toast.error('Sign up failed', {
-                description: result.error ?? 'We could not create your account.',
+            toast.error('註冊失敗', {
+                description: result.error ?? '無法建立帳號，請稍後再試。',
             });
         } catch (e) {
             console.error(e);
-            toast.error('Sign up failed', {
-                description: e instanceof Error ? e.message : 'Failed to create an account.'
+            toast.error('註冊失敗', {
+                description: e instanceof Error ? e.message : '建立帳號時發生錯誤。'
             })
         }
     }
 
     return (
         <>
-            <h1 className="form-title">Sign Up & Personalize</h1>
+            <h1 className="form-title">建立帳號並客製體驗</h1>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 <InputField
                     name="fullName"
-                    label="Full Name"
-                    placeholder="Enter full name"
+                    label="姓名"
+                    placeholder="請輸入全名"
                     register={register}
                     error={errors.fullName}
-                    validation={{ required: 'Full name is required', minLength: 2 }}
+                    validation={{ required: '請輸入姓名', minLength: { value: 2, message: '至少需 2 個字元' } }}
                 />
 
                 <InputField
                     name="email"
-                    label="Email"
+                    label="電子郵件"
                     placeholder="opendevsociety@cc.cc"
                     register={register}
                     error={errors.email}
                     validation={{
-                      required: 'Email is required',
+                      required: '請輸入電子郵件',
                       pattern: {
                         value: /^[\w-.]+@([\w-]+\.)+[\w-]{2,}$/,
-                        message: 'Please enter a valid email address'
+                        message: '請輸入有效的電子郵件地址'
                       }
                     }}
                 />
 
                 <InputField
                     name="password"
-                    label="Password"
-                    placeholder="Enter a strong password"
+                    label="密碼"
+                    placeholder="請設定安全密碼"
                     type="password"
                     register={register}
                     error={errors.password}
-                    validation={{ required: 'Password is required', minLength: 8 }}
+                    validation={{ required: '請輸入密碼', minLength: { value: 8, message: '至少需 8 個字元' } }}
                 />
 
                 <CountrySelectField
                     name="country"
-                    label="Country"
+                    label="居住國家/地區"
                     control={control}
                     error={errors.country}
                     required
@@ -100,8 +100,8 @@ const SignUp = () => {
 
                 <SelectField
                     name="investmentGoals"
-                    label="Investment Goals"
-                    placeholder="Select your investment goal"
+                    label="投資目標"
+                    placeholder="選擇你的投資目標"
                     options={INVESTMENT_GOALS}
                     control={control}
                     error={errors.investmentGoals}
@@ -110,8 +110,8 @@ const SignUp = () => {
 
                 <SelectField
                     name="riskTolerance"
-                    label="Risk Tolerance"
-                    placeholder="Select your risk level"
+                    label="風險承受度"
+                    placeholder="選擇可承受的風險等級"
                     options={RISK_TOLERANCE_OPTIONS}
                     control={control}
                     error={errors.riskTolerance}
@@ -120,8 +120,8 @@ const SignUp = () => {
 
                 <SelectField
                     name="preferredIndustry"
-                    label="Preferred Industry"
-                    placeholder="Select your preferred industry"
+                    label="偏好產業"
+                    placeholder="選擇感興趣的產業"
                     options={PREFERRED_INDUSTRIES}
                     control={control}
                     error={errors.preferredIndustry}
@@ -129,10 +129,10 @@ const SignUp = () => {
                 />
 
                 <Button type="submit" disabled={isSubmitting} className="yellow-btn w-full mt-5">
-                    {isSubmitting ? 'Creating Account' : 'Start Your Investing Journey'}
+                    {isSubmitting ? '建立帳號中' : '開始投資旅程'}
                 </Button>
 
-                <FooterLink text="Already have an account?" linkText="Sign in" href="/sign-in" />
+                <FooterLink text="已經有帳號了嗎？" linkText="前往登入" href="/sign-in" />
 
                 <OpenDevSocietyBranding outerClassName="mt-10 flex justify-center"/>
             </form>

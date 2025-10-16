@@ -15,7 +15,7 @@ const Home = () => {
             <section className="grid w-full gap-8 home-section">
                 <div className="md:col-span-1 xl:col-span-1">
                     <TradingViewWidget
-                        title="Market Overview"
+                        title="市場總覽"
                         scriptUrl={`${scriptUrl}market-overview.js`}
                         config={MARKET_OVERVIEW_WIDGET_CONFIG}
                         className="custom-chart"
@@ -24,7 +24,7 @@ const Home = () => {
                 </div>
                 <div className="md-col-span xl:col-span-2">
                     <TradingViewWidget
-                        title="Stock Heatmap"
+                        title="股票熱力圖"
                         scriptUrl={`${scriptUrl}stock-heatmap.js`}
                         config={HEATMAP_WIDGET_CONFIG}
                         height={600}

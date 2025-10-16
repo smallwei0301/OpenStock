@@ -12,14 +12,14 @@ const Footer = () => {
                         <Link href="/" className="flex items-center gap-2 mb-4">
                             <Image
                                 src="https://i.ibb.co/r28VWPjS/Screenshot-2025-10-04-123317-Picsart-Ai-Image-Enhancer-removebg-preview.png"
-                                alt="OpenStock"
+                                alt="OpenStock 標誌"
                                 width={150}
                                 height={38}
                                 className="brightness-0 invert"
                             />
                         </Link>
                         <p className="text-gray-400 mb-10 max-w-md">
-                            OpenStock is an open-source alternative to expensive market platforms. Track real-time prices, set personalized alerts, and explore detailed company insights — built openly, for everyone, forever free.
+                            OpenStock 是專為投資大眾打造的開源市場工具，提供即時行情追蹤、客製化提醒與深入的公司洞察，讓每位用戶都能在透明、無門檻的環境下掌握市場趨勢。
                         </p>
                         <div className="flex space-x-6">
                             <Link
@@ -60,12 +60,12 @@ const Footer = () => {
 
                     {/* Resources */}
                     <div>
-                        <h3 className="text-lg font-semibold mb-4">Resources</h3>
+                        <h3 className="text-lg font-semibold mb-4">資源</h3>
                         <ul className="space-y-2">
                             <li>
                                 <Link href="/api-docs" className="text-gray-400 hover:text-white transition-colors duration-200 relative group">
                                     <span className="relative">
-                                        API Documentation
+                                        API 文件
                                         <span className="absolute left-0 bottom-0 w-0 h-0.5 bg-white transition-all duration-300 group-hover:w-full"></span>
                                     </span>
                                 </Link>
@@ -73,7 +73,7 @@ const Footer = () => {
                             <li>
                                 <Link href="/help" className="text-gray-400 hover:text-white transition-colors duration-200 relative group">
                                     <span className="relative">
-                                        Help Center
+                                        支援中心
                                         <span className="absolute left-0 bottom-0 w-0 h-0.5 bg-white transition-all duration-300 group-hover:w-full"></span>
                                     </span>
                                 </Link>
@@ -81,7 +81,7 @@ const Footer = () => {
                             <li>
                                 <Link href="/terms" className="text-gray-400 hover:text-white transition-colors duration-200 relative group">
                                     <span className="relative">
-                                        Terms of Service
+                                        服務條款
                                         <span className="absolute left-0 bottom-0 w-0 h-0.5 bg-white transition-all duration-300 group-hover:w-full"></span>
                                     </span>
                                 </Link>
@@ -95,7 +95,7 @@ const Footer = () => {
                     <div className="flex flex-col md:flex-row justify-between items-center">
                         {/* Copyright */}
                         <div className="text-gray-400 text-sm mb-4 md:mb-0">
-                            © {new Date().getFullYear()} Open Dev Society. All rights reserved.
+                            © {new Date().getFullYear()} Open Dev Society。保留所有權利。
                         </div>
 
                         {/* Open Dev Society Branding */}
