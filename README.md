@@ -37,14 +37,15 @@ Note: OpenStock is community-built and not a brokerage. Market data may be delay
 4. 🔋 [Features](#features)
 5. 🤸 [Quick Start](#quick-start)
 6. 🐳 [Docker Setup](#docker-setup)
-7. 🔐 [Environment Variables](#environment-variables)
-8. 🧱 [Project Structure](#project-structure)
-9. 📡 [Data & Integrations](#data--integrations)
-10. 🧪 [Scripts & Tooling](#scripts--tooling)
-11. 🤝 [Contributing](#contributing)
-12. 🛡️ [Security](#security)
-13. 📜 [License](#license)
-14. 🙏 [Acknowledgements](#acknowledgements)
+7. 🚀 [Deploying to Netlify](#deploying-to-netlify)
+8. 🔐 [Environment Variables](#environment-variables)
+9. 🧱 [Project Structure](#project-structure)
+10. 📡 [Data & Integrations](#data--integrations)
+11. 🧪 [Scripts & Tooling](#scripts--tooling)
+12. 🤝 [Contributing](#contributing)
+13. 🛡️ [Security](#security)
+14. 📜 [License](#license)
+15. 🙏 [Acknowledgements](#acknowledgements)
 
 ## ✨ Introduction
 
@@ -220,6 +221,39 @@ services:
 volumes:
   mongo-data:
 ```
+
+## 🚀 Deploying to Netlify
+
+Netlify can build the project without extra tweaks thanks to the included `netlify.toml`. Follow this checklist to enable one-click deployments:
+
+1. **Prepare the repository**
+   - Fork this repo or push it to your Git provider (GitHub/GitLab/Bitbucket).
+   - Ensure the default branch contains your configuration files and the latest code.
+2. **Create a Netlify site**
+   - Log into [Netlify](https://app.netlify.com) and choose **Add new site → Import an existing project**.
+   - Connect the repository; Netlify auto-detects the build command (`npm run build`) and publish directory (`.next`) from `netlify.toml`.
+   - The official `@netlify/plugin-nextjs` is installed automatically during each build.
+3. **Set environment variables**
+   - In **Site settings → Environment variables**, add the same keys you use locally (see [Environment Variables](#environment-variables) for details).
+   - Minimum production-ready values:
+
+      | Variable | Purpose |
+      | --- | --- |
+      | `MONGODB_URI` | Connection string for your MongoDB deployment (Atlas or dedicated cluster). |
+      | `BETTER_AUTH_SECRET` | Secret string for Better Auth session encryption. |
+      | `BETTER_AUTH_URL` | Public site URL (e.g. `https://your-site.netlify.app`). |
+      | `FINNHUB_API_KEY` | Server-side Finnhub market data key. |
+      | `NEXT_PUBLIC_FINNHUB_API_KEY` | Optional browser-exposed Finnhub key if client requests need it. |
+      | `FINNHUB_BASE_URL` | Default `https://finnhub.io/api/v1`; override only if you proxy requests. |
+      | `GEMINI_API_KEY` | (Optional) Enables AI-powered emails triggered through Inngest. |
+      | `NODEMAILER_EMAIL` / `NODEMAILER_PASSWORD` | SMTP credentials for transactional email delivery. |
+4. **Trigger the first deploy**
+   - Click **Deploy site**. Netlify runs `npm run build`, emits serverless functions for API routes/Server Actions, and serves assets from `.next`.
+   - Subsequent pushes to the tracked branch deploy automatically.
+5. **Local parity (optional)**
+   - Install the [Netlify CLI](https://docs.netlify.com/cli/get-started/) and run `netlify dev` to emulate Netlify Functions locally for QA parity.
+
+> ℹ️ For cron jobs or background workflows (Inngest), continue configuring them with the provider dashboards; Netlify focuses on request-driven functions.
 
 ## 🔐 Environment Variables
 

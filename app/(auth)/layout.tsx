@@ -3,11 +3,19 @@ import React from "react";
 import Image from "next/image";
 import {headers} from "next/headers";
 import {redirect} from "next/navigation";
-import {auth} from "@/lib/better-auth/auth";
+import {getAuth, isAuthConfigured} from "@/lib/better-auth/auth";
+
+type AuthClient = Awaited<ReturnType<typeof getAuth>>;
+type AuthSession = Awaited<ReturnType<AuthClient["api"]["getSession"]>>;
 
 const Layout = async ({ children }: { children : React.ReactNode }) => {
 
-    const session = await auth.api.getSession({headers: await headers()});
+    let session: AuthSession | null = null;
+
+    if (isAuthConfigured()) {
+        const auth = await getAuth();
+        session = await auth.api.getSession({headers: await headers()});
+    }
 
     if (session?.user) redirect('/')
     return (
@@ -47,3 +55,4 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
     )
 }
 export default Layout
+

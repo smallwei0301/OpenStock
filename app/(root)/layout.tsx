@@ -1,19 +1,30 @@
 import Header from "@/components/Header";
-import {auth} from "@/lib/better-auth/auth";
+import {getAuth, isAuthConfigured} from "@/lib/better-auth/auth";
 import {headers} from "next/headers";
 import {redirect} from "next/navigation";
 import Footer from "@/components/Footer";
 
+type RootAuthClient = Awaited<ReturnType<typeof getAuth>>;
+type RootSession = Awaited<ReturnType<RootAuthClient["api"]["getSession"]>>;
+
 const Layout = async ({ children }: { children : React.ReactNode }) => {
-    const session = await auth.api.getSession({ headers: await headers() });
+    const authConfigured = isAuthConfigured();
+    let session: RootSession | null = null;
 
-    if(!session?.user) redirect('/sign-in');
+    if (authConfigured) {
+        const auth = await getAuth();
+        session = await auth.api.getSession({ headers: await headers() });
 
-    const user = {
-        id: session.user.id,
-        name: session.user.name,
-        email: session.user.email,
+        if(!session?.user) redirect('/sign-in');
     }
+
+    const user = session?.user
+        ? {
+            id: session.user.id,
+            name: session.user.name,
+            email: session.user.email,
+        }
+        : null;
 
     return (
         <main className="min-h-screen text-gray-400">
