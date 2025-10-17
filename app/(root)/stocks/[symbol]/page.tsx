@@ -93,7 +93,7 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                     {isTaiwanSymbol ? (
                         <>
                             <TaiwanStockSnapshot quote={quote} profile={profile} />
-                            <TaiwanStockChart candles={candles} height={600} />
+                            <TaiwanStockChart symbol={normalizedSymbol} candles={candles} height={600} />
                         </>
                     ) : (
                         <>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { LIGHTWEIGHT_CHARTS_SCRIPT_SRC } from '@/lib/constants';
 import { cn } from '@/lib/utils';
@@ -29,7 +29,8 @@ declare global {
 }
 
 type TaiwanStockChartProps = {
-    candles: CandleDatum[];
+    symbol: string;
+    candles?: CandleDatum[];
     height?: number;
     className?: string;
 };
@@ -78,9 +79,64 @@ const loadLightweightCharts = () =>
         document.head.appendChild(script);
     });
 
-const TaiwanStockChart = ({ candles, height = 600, className }: TaiwanStockChartProps) => {
+const DEFAULT_RESOLUTION = 'D';
+const DEFAULT_COUNT = 240;
+
+const TaiwanStockChart = ({ symbol, candles, height = 600, className }: TaiwanStockChartProps) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [candlesData, setCandlesData] = useState<CandleDatum[]>(() => candles ?? []);
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    useEffect(() => {
+        setCandlesData(candles ?? []);
+        if (candles && candles.length > 0) {
+            setLoadError(null);
+        }
+    }, [candles, symbol]);
+
+    const fetchCandles = useCallback(async () => {
+        if (!symbol) return;
+
+        try {
+            setIsLoading(true);
+            setLoadError(null);
+
+            const params = new URLSearchParams({
+                symbol,
+                resolution: DEFAULT_RESOLUTION,
+                count: String(DEFAULT_COUNT),
+            });
+
+            const response = await fetch(`/api/finnhub/candles?${params.toString()}`, { cache: 'no-store' });
+
+            if (!response.ok) {
+                const message = await response.text().catch(() => '');
+                throw new Error(message || 'Candle fetch failed');
+            }
+
+            const payload = (await response.json()) as { candles?: CandleDatum[] };
+
+            if (Array.isArray(payload.candles) && payload.candles.length > 0) {
+                setLoadError(null);
+                setCandlesData(payload.candles);
+                return;
+            }
+
+            setLoadError('暫時取得不到該股票的歷史走勢，稍後再試一次。');
+        } catch (error) {
+            console.error('TaiwanStockChart fetchCandles error:', error);
+            setLoadError('台股走勢載入失敗，請稍後再試。');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [symbol]);
+
+    useEffect(() => {
+        if ((!candles || candles.length === 0) && candlesData.length === 0 && !isLoading) {
+            void fetchCandles();
+        }
+    }, [candles, candlesData.length, fetchCandles, isLoading]);
 
     useEffect(() => {
         let disposed = false;
@@ -89,8 +145,7 @@ const TaiwanStockChart = ({ candles, height = 600, className }: TaiwanStockChart
 
         const initialize = async () => {
             if (!containerRef.current) return;
-            if (!candles || candles.length === 0) {
-                setError('暫無可用的台股走勢資料。');
+            if (!candlesData || candlesData.length === 0) {
                 return;
             }
 
@@ -99,7 +154,8 @@ const TaiwanStockChart = ({ candles, height = 600, className }: TaiwanStockChart
             } catch (err) {
                 if (!disposed) {
                     console.error('TaiwanStockChart load error:', err);
-                    setError('無法載入 TradingView 圖表模組。請稍後再試。');
+                    setLoadError('無法載入 TradingView 圖表模組。請稍後再試。');
+                    setCandlesData([]);
                 }
                 return;
             }
@@ -108,7 +164,10 @@ const TaiwanStockChart = ({ candles, height = 600, className }: TaiwanStockChart
 
             const library = window.LightweightCharts;
             if (!library?.createChart) {
-                if (!disposed) setError('TradingView 圖表模組未正確初始化。');
+                if (!disposed) {
+                    setLoadError('TradingView 圖表模組未正確初始化。');
+                    setCandlesData([]);
+                }
                 return;
             }
 
@@ -149,7 +208,7 @@ const TaiwanStockChart = ({ candles, height = 600, className }: TaiwanStockChart
             });
 
             candleSeries.setData(
-                candles.map((candle) => ({
+                candlesData.map((candle) => ({
                     time: candle.time,
                     open: candle.open,
                     high: candle.high,
@@ -168,7 +227,7 @@ const TaiwanStockChart = ({ candles, height = 600, className }: TaiwanStockChart
             });
 
             volumeSeries.setData(
-                candles.map((candle) => ({
+                candlesData.map((candle) => ({
                     time: candle.time,
                     value: candle.volume ?? 0,
                     color:
@@ -188,7 +247,6 @@ const TaiwanStockChart = ({ candles, height = 600, className }: TaiwanStockChart
             resizeObserver = new ResizeObserver(() => resizeContainer());
             resizeObserver.observe(containerRef.current);
             resizeContainer();
-            setError(null);
         };
 
         initialize();
@@ -198,23 +256,37 @@ const TaiwanStockChart = ({ candles, height = 600, className }: TaiwanStockChart
             resizeObserver?.disconnect();
             chart?.remove();
         };
-    }, [candles, height]);
+    }, [candlesData, height]);
 
-    if (error) {
+    if (!candlesData || candlesData.length === 0) {
         return (
             <div
                 ref={containerRef}
                 className={cn(
-                    'flex h-full w-full items-center justify-center rounded-2xl border border-gray-800 bg-gray-900/60 p-6 text-center text-sm text-amber-100',
+                    'flex h-full w-full flex-col items-center justify-center gap-3 rounded-2xl border border-gray-800 bg-gray-900/60 p-6 text-center text-sm text-amber-100',
                     className,
                 )}
             >
-                {error}
+                <span>{isLoading ? '正在載入台股走勢資料…' : loadError ?? '暫無可用的台股走勢資料。'}</span>
+                <button
+                    type="button"
+                    onClick={() => void fetchCandles()}
+                    disabled={isLoading}
+                    className="inline-flex items-center rounded-lg border border-amber-400/60 px-3 py-1.5 text-xs font-medium text-amber-50 transition-colors hover:border-amber-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    {isLoading ? '重新整理中…' : '重新整理走勢資料'}
+                </button>
             </div>
         );
     }
 
-    return <div ref={containerRef} className={cn('w-full overflow-hidden rounded-2xl border border-gray-800 bg-gray-900/40', className)} style={{ height }} />;
+    return (
+        <div
+            ref={containerRef}
+            className={cn('w-full overflow-hidden rounded-2xl border border-gray-800 bg-gray-900/40', className)}
+            style={{ height }}
+        />
+    );
 };
 
 export default TaiwanStockChart;
