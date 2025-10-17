@@ -28,9 +28,23 @@ declare global {
     }
 }
 
+const DEFAULT_NO_DATA_MESSAGE = '暫時取得不到該股票的歷史走勢，稍後再試一次。';
+
+const REASON_MESSAGE_MAP: Record<CandleDataIssue, string> = {
+    'no-data': DEFAULT_NO_DATA_MESSAGE,
+    'rate-limit': 'Finnhub API 呼叫已達今日流量上限，請稍後再重新整理。',
+    'not-configured': '系統尚未完成台股資料來源設定，暫無法載入走勢。',
+    'invalid-symbol': '找不到對應的台股代號，請確認輸入是否正確。',
+    'network-error': '台股走勢載入失敗，請確認網路連線後再試一次。',
+};
+
+const resolveReasonMessage = (reason?: CandleDataIssue | null) =>
+    reason ? REASON_MESSAGE_MAP[reason] ?? DEFAULT_NO_DATA_MESSAGE : DEFAULT_NO_DATA_MESSAGE;
+
 type TaiwanStockChartProps = {
     symbol: string;
     candles?: CandleDatum[];
+    initialReason?: CandleDataIssue;
     height?: number;
     className?: string;
 };
@@ -85,20 +99,43 @@ const DEFAULT_COUNT = 240;
 const MAX_AUTO_RETRY = 3;
 const AUTO_RETRY_DELAY_MS = 4_000;
 
-const TaiwanStockChart = ({ symbol, candles, height = 600, className }: TaiwanStockChartProps) => {
+const TaiwanStockChart = ({ symbol, candles, initialReason, height = 600, className }: TaiwanStockChartProps) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [candlesData, setCandlesData] = useState<CandleDatum[]>(() => candles ?? []);
     const [isLoading, setIsLoading] = useState(false);
-    const [loadError, setLoadError] = useState<string | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(() =>
+        initialReason ? resolveReasonMessage(initialReason) : null,
+    );
     const [autoRetryAttempts, setAutoRetryAttempts] = useState(0);
+    const [issue, setIssue] = useState<CandleDataIssue | null>(initialReason ?? null);
+    const previousSymbolRef = useRef(symbol);
 
     useEffect(() => {
+        const hasSymbolChanged = previousSymbolRef.current !== symbol;
+        previousSymbolRef.current = symbol;
+
         setCandlesData(candles ?? []);
+
         if (candles && candles.length > 0) {
+            setLoadError(null);
+            setIssue(null);
+            setAutoRetryAttempts(0);
+            return;
+        }
+
+        if (initialReason) {
+            setIssue(initialReason);
+            setLoadError(resolveReasonMessage(initialReason));
+            setAutoRetryAttempts(0);
+            return;
+        }
+
+        if (hasSymbolChanged) {
+            setIssue(null);
             setLoadError(null);
             setAutoRetryAttempts(0);
         }
-    }, [candles, symbol]);
+    }, [candles, initialReason, symbol]);
 
     const fetchCandles = useCallback(async () => {
         if (!symbol) return;
@@ -106,6 +143,7 @@ const TaiwanStockChart = ({ symbol, candles, height = 600, className }: TaiwanSt
         try {
             setIsLoading(true);
             setLoadError(null);
+            setIssue(null);
 
             const params = new URLSearchParams({
                 symbol,
@@ -120,18 +158,23 @@ const TaiwanStockChart = ({ symbol, candles, height = 600, className }: TaiwanSt
                 throw new Error(message || 'Candle fetch failed');
             }
 
-            const payload = (await response.json()) as { candles?: CandleDatum[] };
+            const payload = (await response.json()) as StockCandlesResult;
 
             if (Array.isArray(payload.candles) && payload.candles.length > 0) {
                 setLoadError(null);
                 setCandlesData(payload.candles);
+                setIssue(null);
+                setAutoRetryAttempts(0);
                 return;
             }
 
-            setLoadError('暫時取得不到該股票的歷史走勢，稍後再試一次。');
+            const nextIssue = payload.reason ?? 'no-data';
+            setIssue(nextIssue);
+            setLoadError(resolveReasonMessage(nextIssue));
         } catch (error) {
             console.error('TaiwanStockChart fetchCandles error:', error);
-            setLoadError('台股走勢載入失敗，請稍後再試。');
+            setIssue('network-error');
+            setLoadError(resolveReasonMessage('network-error'));
         } finally {
             setIsLoading(false);
         }
@@ -143,6 +186,7 @@ const TaiwanStockChart = ({ symbol, candles, height = 600, className }: TaiwanSt
         if (isLoading) return;
         if (autoRetryAttempts >= MAX_AUTO_RETRY) return;
         if (candles && candles.length > 0) return;
+        if (issue === 'not-configured' || issue === 'invalid-symbol' || issue === 'rate-limit') return;
 
         const timer = window.setTimeout(() => {
             setAutoRetryAttempts((previous) => previous + 1);
@@ -155,12 +199,15 @@ const TaiwanStockChart = ({ symbol, candles, height = 600, className }: TaiwanSt
         candles,
         candlesData.length,
         fetchCandles,
+        issue,
         isLoading,
         symbol,
     ]);
 
     const handleManualRefresh = useCallback(() => {
         setAutoRetryAttempts(0);
+        setIssue(null);
+        setLoadError(null);
         void fetchCandles();
     }, [fetchCandles]);
 

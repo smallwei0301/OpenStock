@@ -148,6 +148,18 @@ declare global {
         volume?: number;
     };
 
+    type CandleDataIssue =
+        | 'not-configured'
+        | 'invalid-symbol'
+        | 'no-data'
+        | 'rate-limit'
+        | 'network-error';
+
+    type StockCandlesResult = {
+        candles: CandleDatum[];
+        reason?: CandleDataIssue;
+    };
+
     type SelectedStock = {
         symbol: string;
         company: string;

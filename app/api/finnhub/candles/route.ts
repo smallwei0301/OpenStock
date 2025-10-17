@@ -24,12 +24,12 @@ export async function GET(request: NextRequest) {
     const count = Number.isFinite(countParam) && countParam > 0 ? countParam : undefined;
 
     try {
-        const candles = await getStockCandles(symbol, {
+        const { candles, reason } = await getStockCandles(symbol, {
             resolution,
             count,
         });
 
-        return NextResponse.json({ candles });
+        return NextResponse.json({ candles, reason });
     } catch (error) {
         console.error('GET /api/finnhub/candles error:', error);
         return NextResponse.json({ error: 'Unable to fetch candle data' }, { status: 500 });

@@ -30,6 +30,16 @@ type FinnhubCandleResponse = {
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 
+class FinnhubFetchError extends Error {
+    status?: number;
+
+    constructor(message: string, status?: number) {
+        super(message);
+        this.name = 'FinnhubFetchError';
+        this.status = status;
+    }
+}
+
 const resolveFinnhubToken = () =>
     (process.env.FINNHUB_API_KEY ?? process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '').trim();
 
@@ -45,7 +55,7 @@ async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T>
     const res = await fetch(url, options);
     if (!res.ok) {
         const text = await res.text().catch(() => '');
-        throw new Error(`Fetch failed ${res.status}: ${text}`);
+        throw new FinnhubFetchError(`Fetch failed ${res.status}: ${text}`, res.status);
     }
     return (await res.json()) as T;
 }
@@ -207,15 +217,17 @@ const buildSymbolCandidates = (symbol: string) => {
     return Array.from(candidates);
 };
 
+type CandleFetchStatus = 'ok' | 'no_data' | 'rate_limit' | 'error';
+
 const fetchCandlesWithRange = async (
     symbol: string,
     resolution: CandleResolution,
     from: number,
     to: number,
     token: string,
-): Promise<CandleDatum[]> => {
+): Promise<{ candles: CandleDatum[]; status: CandleFetchStatus }> => {
     if (!Number.isFinite(from) || !Number.isFinite(to) || from >= to) {
-        return [];
+        return { candles: [], status: 'error' };
     }
 
     const url = `${FINNHUB_BASE_URL}/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=${encodeURIComponent(
@@ -225,27 +237,31 @@ const fetchCandlesWithRange = async (
     try {
         const data = await fetchJSON<FinnhubCandleResponse>(url, 600);
         if (data?.s === 'no_data') {
-            return [];
+            return { candles: [], status: 'no_data' };
         }
-        return toCandles(data);
+        const candles = toCandles(data);
+        return { candles, status: candles.length > 0 ? 'ok' : 'no_data' };
     } catch (error) {
+        if (error instanceof FinnhubFetchError && error.status === 429) {
+            return { candles: [], status: 'rate_limit' };
+        }
         if (process.env.NODE_ENV !== 'production') {
             console.warn('getStockCandles attempt failed:', { symbol, resolution, from, to, error });
         }
-        return [];
+        return { candles: [], status: 'error' };
     }
 };
 
-export async function getStockCandles(symbol: string, options: CandleOptions = {}): Promise<CandleDatum[]> {
+export async function getStockCandles(symbol: string, options: CandleOptions = {}): Promise<StockCandlesResult> {
     try {
         const token = resolveFinnhubToken();
         if (!token) {
-            throw new Error('FINNHUB API key is not configured');
+            return { candles: [], reason: 'not-configured' };
         }
 
         const normalizedSymbol = symbol?.trim().toUpperCase();
         if (!normalizedSymbol) {
-            return [];
+            return { candles: [], reason: 'invalid-symbol' };
         }
 
         const resolution: CandleResolution = options.resolution ?? 'D';
@@ -261,24 +277,42 @@ export async function getStockCandles(symbol: string, options: CandleOptions = {
         ];
         const backoffSteps = Array.from({ length: CANDLE_BACKOFF_STEPS }, (_, index) => index * resolutionSeconds);
 
+        let fallbackReason: CandleDataIssue | undefined;
+
         for (const candidate of symbolCandidates) {
             for (const countOption of countCandidates) {
                 for (const backoff of backoffSteps) {
                     const to = baseTo - backoff;
                     const from = to - resolutionSeconds * countOption;
-                    const candles = await fetchCandlesWithRange(candidate, resolution, from, to, token);
+                    const { candles, status } = await fetchCandlesWithRange(
+                        candidate,
+                        resolution,
+                        from,
+                        to,
+                        token,
+                    );
                     if (candles.length > 0) {
-                        return candles;
+                        return { candles };
+                    }
+
+                    if (status === 'rate_limit') {
+                        return { candles: [], reason: 'rate-limit' };
+                    }
+
+                    if (status === 'error' && fallbackReason !== 'rate-limit') {
+                        fallbackReason = 'network-error';
+                    } else if (!fallbackReason && status === 'no_data') {
+                        fallbackReason = 'no-data';
                     }
                 }
             }
         }
 
         console.warn('getStockCandles exhausted all fallback attempts for symbol:', normalizedSymbol);
-        return [];
+        return { candles: [], reason: fallbackReason ?? 'no-data' };
     } catch (err) {
         console.error('getStockCandles error:', err);
-        return [];
+        return { candles: [], reason: 'network-error' };
     }
 }
 

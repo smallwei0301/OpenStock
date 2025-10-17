@@ -43,6 +43,7 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
     let quote: QuoteData | null = null;
     let financials: FinancialsData | null = null;
     let candles: CandleDatum[] = [];
+    let candleIssue: CandleDataIssue | undefined;
 
     if (finnHubConfigured) {
         try {
@@ -57,7 +58,9 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
             }
 
             if (isTaiwanSymbol) {
-                candles = await getStockCandles(normalizedSymbol, { resolution: 'D', count: 240 });
+                const candleResult = await getStockCandles(normalizedSymbol, { resolution: 'D', count: 240 });
+                candles = candleResult.candles;
+                candleIssue = candleResult.reason;
             }
         } catch (err) {
             console.error("stock data hydrate error:", err);
@@ -93,7 +96,12 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                     {isTaiwanSymbol ? (
                         <>
                             <TaiwanStockSnapshot quote={quote} profile={profile} />
-                            <TaiwanStockChart symbol={normalizedSymbol} candles={candles} height={600} />
+                            <TaiwanStockChart
+                                symbol={normalizedSymbol}
+                                candles={candles}
+                                initialReason={candleIssue}
+                                height={600}
+                            />
                         </>
                     ) : (
                         <>
