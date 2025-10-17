@@ -19,3 +19,7 @@
 - Version Code: `netlify-ready-v20250220`
 - Description: 強化搜尋體驗與導覽層，加入桌面與行動版完整搜尋頁連結、指令面板與手機選單，確保所有開源功能在前端可視可用。
 - Date: 2025-02-20
+
+- Version Code: `netlify-ready-v20250221`
+- Description: 修正 Finnhub API 金鑰偵測邏輯並於伺服器／客戶端搜尋流程中即時反應設定狀態，確保已配置金鑰的 Netlify 部署能啟用所有市場資料功能。
+- Date: 2025-02-21

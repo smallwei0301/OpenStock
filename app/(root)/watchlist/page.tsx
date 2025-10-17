@@ -1,15 +1,14 @@
 import SearchCommand from "@/components/SearchCommand";
 import WatchlistTable from "@/components/WatchlistTable";
-import { searchStocks, getWatchlistWithMarketData } from "@/lib/actions/finnhub.actions";
+import { searchStocks, getWatchlistWithMarketData, isFinnhubConfigured } from "@/lib/actions/finnhub.actions";
 import { getWatchlistItemsByUserId } from "@/lib/actions/watchlist.actions";
 import { getAuth, isAuthConfigured } from "@/lib/better-auth/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 const databaseConfigured = Boolean(process.env.MONGODB_URI);
-const finnHubConfigured = Boolean(process.env.FINNHUB_API_KEY || process.env.NEXT_PUBLIC_FINNHUB_API_KEY);
-
 const WatchlistPage = async () => {
+    const finnHubConfigured = isFinnhubConfigured();
     const authConfigured = isAuthConfigured();
 
     if (!authConfigured || !databaseConfigured) {

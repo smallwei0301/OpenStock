@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchStocks } from "@/lib/actions/finnhub.actions";
+import { searchStocks, isFinnhubConfigured } from "@/lib/actions/finnhub.actions";
 import { getAuth, isAuthConfigured } from "@/lib/better-auth/auth";
 import { getWatchlistSymbolsByUserId } from "@/lib/actions/watchlist.actions";
 
@@ -22,6 +22,13 @@ export async function GET(request: NextRequest) {
             } catch (err) {
                 console.error("search api session error:", err);
             }
+        }
+
+        if (!isFinnhubConfigured()) {
+            return NextResponse.json(
+                { stocks: [], error: "FINNHUB API 尚未設定，無法查詢即時市場資料。" },
+                { status: 503 },
+            );
         }
 
         const stocks = await searchStocks(query, watchlistSymbols);

@@ -75,8 +75,20 @@ const SearchExperience = ({
                 });
 
                 if (!response.ok) {
-                    const message = await response.text().catch(() => "搜尋失敗");
-                    throw new Error(message);
+                    let errorMessage = "搜尋失敗";
+                    try {
+                        const data = (await response.json()) as { error?: string };
+                        if (typeof data?.error === "string" && data.error.trim().length > 0) {
+                            errorMessage = data.error.trim();
+                        }
+                    } catch {
+                        const fallback = await response.text().catch(() => "");
+                        if (fallback.trim().length > 0) {
+                            errorMessage = fallback.trim();
+                        }
+                    }
+
+                    throw new Error(errorMessage);
                 }
 
                 const data = (await response.json()) as { stocks?: StockWithWatchlistStatus[]; error?: string };
@@ -92,7 +104,10 @@ const SearchExperience = ({
                 if (controller.signal.aborted) return;
                 console.error("search api error:", err);
                 setRawResults([]);
-                setError("搜尋時發生錯誤，請稍後再試一次。");
+                const message = err instanceof Error && err.message.trim().length > 0
+                    ? err.message.trim()
+                    : "搜尋時發生錯誤，請稍後再試一次。";
+                setError(message);
             } finally {
                 if (!controller.signal.aborted) {
                     setLoading(false);

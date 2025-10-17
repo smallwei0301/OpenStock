@@ -12,7 +12,11 @@ type FinnhubProfileResponse = {
 };
 
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
-const NEXT_PUBLIC_FINNHUB_API_KEY = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '';
+
+const resolveFinnhubToken = () =>
+    (process.env.FINNHUB_API_KEY ?? process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? '').trim();
+
+export const isFinnhubConfigured = () => resolveFinnhubToken().length > 0;
 
 async function fetchJSON<T>(url: string, revalidateSeconds?: number): Promise<T> {
     const options: RequestInit & { next?: { revalidate?: number } } = revalidateSeconds
@@ -32,7 +36,7 @@ export { fetchJSON };
 export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> {
     try {
         const range = getDateRange(5);
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = resolveFinnhubToken();
         if (!token) {
             throw new Error('FINNHUB API key is not configured');
         }
@@ -110,7 +114,7 @@ export const searchStocks = cache(async (
     watchlistSymbols: string[] = [],
 ): Promise<StockWithWatchlistStatus[]> => {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = resolveFinnhubToken();
         if (!token) {
             // If no token, log and return empty to avoid throwing per requirements
             console.error('Error in stock search:', new Error('FINNHUB API key is not configured'));
@@ -194,7 +198,7 @@ export const searchStocks = cache(async (
 
 export async function getQuote(symbol: string): Promise<QuoteData | null> {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = resolveFinnhubToken();
         if (!token) {
             throw new Error('FINNHUB API key is not configured');
         }
@@ -210,7 +214,7 @@ export async function getQuote(symbol: string): Promise<QuoteData | null> {
 
 export async function getCompanyProfile(symbol: string): Promise<ProfileData | null> {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = resolveFinnhubToken();
         if (!token) {
             throw new Error('FINNHUB API key is not configured');
         }
@@ -226,7 +230,7 @@ export async function getCompanyProfile(symbol: string): Promise<ProfileData | n
 
 export async function getCompanyFinancials(symbol: string): Promise<FinancialsData | null> {
     try {
-        const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+        const token = resolveFinnhubToken();
         if (!token) {
             throw new Error('FINNHUB API key is not configured');
         }
@@ -241,7 +245,7 @@ export async function getCompanyFinancials(symbol: string): Promise<FinancialsDa
 }
 
 export async function getWatchlistWithMarketData(watchlist: WatchlistItem[]) {
-    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    const token = resolveFinnhubToken();
 
     if (!Array.isArray(watchlist) || watchlist.length === 0) {
         return { items: [] as StockWithData[], marketDataReady: Boolean(token) };

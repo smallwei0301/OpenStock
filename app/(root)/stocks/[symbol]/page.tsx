@@ -8,14 +8,13 @@ import {
     COMPANY_PROFILE_WIDGET_CONFIG,
     COMPANY_FINANCIALS_WIDGET_CONFIG,
 } from "@/lib/constants";
-import { getCompanyProfile } from "@/lib/actions/finnhub.actions";
+import { getCompanyProfile, isFinnhubConfigured } from "@/lib/actions/finnhub.actions";
 import { getWatchlistSymbolsByUserId } from "@/lib/actions/watchlist.actions";
 import { getAuth, isAuthConfigured } from "@/lib/better-auth/auth";
 import { headers } from "next/headers";
 
-const finnHubConfigured = Boolean(process.env.FINNHUB_API_KEY || process.env.NEXT_PUBLIC_FINNHUB_API_KEY);
-
 export default async function StockDetails({ params }: StockDetailsPageProps) {
+    const finnHubConfigured = isFinnhubConfigured();
     const { symbol } = await params;
     const normalizedSymbol = symbol.toUpperCase();
     const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;
