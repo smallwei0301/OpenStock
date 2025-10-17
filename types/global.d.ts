@@ -153,7 +153,8 @@ declare global {
         | 'invalid-symbol'
         | 'no-data'
         | 'rate-limit'
-        | 'network-error';
+        | 'network-error'
+        | 'permission-denied';
 
     type StockCandlesResult = {
         candles: CandleDatum[];

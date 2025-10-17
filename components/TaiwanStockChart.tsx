@@ -36,6 +36,7 @@ const REASON_MESSAGE_MAP: Record<CandleDataIssue, string> = {
     'not-configured': '系統尚未完成台股資料來源設定，暫無法載入走勢。',
     'invalid-symbol': '找不到對應的台股代號，請確認輸入是否正確。',
     'network-error': '台股走勢載入失敗，請確認網路連線後再試一次。',
+    'permission-denied': 'Finnhub API 權限不足，請確認方案是否支援台股歷史走勢資料。',
 };
 
 const resolveReasonMessage = (reason?: CandleDataIssue | null) =>
@@ -186,7 +187,13 @@ const TaiwanStockChart = ({ symbol, candles, initialReason, height = 600, classN
         if (isLoading) return;
         if (autoRetryAttempts >= MAX_AUTO_RETRY) return;
         if (candles && candles.length > 0) return;
-        if (issue === 'not-configured' || issue === 'invalid-symbol' || issue === 'rate-limit') return;
+        if (
+            issue === 'not-configured' ||
+            issue === 'invalid-symbol' ||
+            issue === 'rate-limit' ||
+            issue === 'permission-denied'
+        )
+            return;
 
         const timer = window.setTimeout(() => {
             setAutoRetryAttempts((previous) => previous + 1);

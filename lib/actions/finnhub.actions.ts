@@ -217,7 +217,7 @@ const buildSymbolCandidates = (symbol: string) => {
     return Array.from(candidates);
 };
 
-type CandleFetchStatus = 'ok' | 'no_data' | 'rate_limit' | 'error';
+type CandleFetchStatus = 'ok' | 'no_data' | 'rate_limit' | 'permission_denied' | 'error';
 
 const fetchCandlesWithRange = async (
     symbol: string,
@@ -242,8 +242,13 @@ const fetchCandlesWithRange = async (
         const candles = toCandles(data);
         return { candles, status: candles.length > 0 ? 'ok' : 'no_data' };
     } catch (error) {
-        if (error instanceof FinnhubFetchError && error.status === 429) {
-            return { candles: [], status: 'rate_limit' };
+        if (error instanceof FinnhubFetchError) {
+            if (error.status === 429) {
+                return { candles: [], status: 'rate_limit' };
+            }
+            if (error.status === 401 || error.status === 403) {
+                return { candles: [], status: 'permission_denied' };
+            }
         }
         if (process.env.NODE_ENV !== 'production') {
             console.warn('getStockCandles attempt failed:', { symbol, resolution, from, to, error });
@@ -299,6 +304,10 @@ export async function getStockCandles(symbol: string, options: CandleOptions = {
                         return { candles: [], reason: 'rate-limit' };
                     }
 
+                    if (status === 'permission_denied') {
+                        return { candles: [], reason: 'permission-denied' };
+                    }
+
                     if (status === 'error' && fallbackReason !== 'rate-limit') {
                         fallbackReason = 'network-error';
                     } else if (!fallbackReason && status === 'no_data') {
@@ -312,6 +321,9 @@ export async function getStockCandles(symbol: string, options: CandleOptions = {
         return { candles: [], reason: fallbackReason ?? 'no-data' };
     } catch (err) {
         console.error('getStockCandles error:', err);
+        if (err instanceof FinnhubFetchError && (err.status === 401 || err.status === 403)) {
+            return { candles: [], reason: 'permission-denied' };
+        }
         return { candles: [], reason: 'network-error' };
     }
 }
