@@ -5,6 +5,61 @@ export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
+const FINNHUB_SUFFIX_TO_TRADINGVIEW_PREFIX: Record<string, string> = {
+    TW: 'TWSE:',
+    TWO: 'TPEX:',
+    TPE: 'TWSE:',
+    HK: 'HKEX:',
+    SS: 'SSE:',
+    SZ: 'SZSE:',
+    TO: 'TSX:',
+    V: 'TSXV:',
+    KS: 'KRX:',
+    KQ: 'KOSDAQ:',
+    PA: 'EURONEXT:',
+    MI: 'MIL:',
+    SA: 'BMFBOVESPA:',
+    MC: 'BME:',
+};
+
+const FINNHUB_EXCHANGE_TO_TRADINGVIEW_PREFIX: Record<string, string> = {
+    TAIWAN: 'TWSE:',
+    'TAIWAN STOCK EXCHANGE': 'TWSE:',
+    'TAIPEI EXCHANGE': 'TPEX:',
+    TWSE: 'TWSE:',
+    TPEX: 'TPEX:',
+};
+
+export const mapFinnhubSymbolToTradingView = (symbol: string, exchangeHint?: string) => {
+    if (!symbol) return '';
+
+    const trimmed = symbol.trim().toUpperCase();
+    if (!trimmed) return '';
+
+    if (trimmed.includes(':')) {
+        return trimmed;
+    }
+
+    const normalized = trimmed.replace(/\s+/g, '');
+    const parts = normalized.split('.');
+    const suffix = parts.length > 1 ? parts[parts.length - 1] : undefined;
+
+    let prefix: string | undefined;
+    if (suffix && FINNHUB_SUFFIX_TO_TRADINGVIEW_PREFIX[suffix]) {
+        prefix = FINNHUB_SUFFIX_TO_TRADINGVIEW_PREFIX[suffix];
+    } else if (exchangeHint) {
+        const hint = exchangeHint.trim().toUpperCase();
+        prefix = FINNHUB_EXCHANGE_TO_TRADINGVIEW_PREFIX[hint];
+    }
+
+    if (prefix) {
+        const base = (parts.length > 1 ? parts.slice(0, -1).join('.') : normalized).replace(/\./g, '');
+        return `${prefix}${base}`;
+    }
+
+    return normalized;
+};
+
 export const formatTimeAgo = (timestamp: number) => {
     const now = Date.now();
     const diffInMs = now - timestamp * 1000; // Convert to milliseconds
