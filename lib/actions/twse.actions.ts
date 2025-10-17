@@ -27,11 +27,13 @@ type FetchOptions = {
     searchParams?: Record<string, string>;
     revalidate?: number;
     cacheMode?: RequestCache;
+    includeResponseParam?: boolean;
 };
 
 const fetchTwseJSON = async <T>(path: string, options: FetchOptions = {}): Promise<T> => {
     const url = new URL(`${TWSE_BASE_URL}/${path.replace(/^\//, '')}`);
-    const params = { response: 'json', ...options.searchParams };
+    const params =
+        options.includeResponseParam === false ? { ...options.searchParams } : { response: 'json', ...options.searchParams };
     Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
             url.searchParams.set(key, value);
@@ -351,6 +353,237 @@ const parseTwseTimestamp = (value?: string): number | undefined => {
     return Number.isFinite(date.valueOf()) ? Math.floor(date.getTime() / 1000) : undefined;
 };
 
+const parseTwseDateTimeParts = (datePart?: string, timePart?: string): number | undefined => {
+    if (!timePart) return undefined;
+    let normalizedTime = timePart.trim();
+    if (!normalizedTime) return undefined;
+
+    if (/^\d{6}$/.test(normalizedTime)) {
+        normalizedTime = `${normalizedTime.slice(0, 2)}:${normalizedTime.slice(2, 4)}:${normalizedTime.slice(4, 6)}`;
+    } else if (/^\d{4}$/.test(normalizedTime)) {
+        normalizedTime = `${normalizedTime.slice(0, 2)}:${normalizedTime.slice(2, 4)}:00`;
+    } else if (/^\d{2}:\d{2}$/.test(normalizedTime)) {
+        normalizedTime = `${normalizedTime}:00`;
+    }
+
+    let isoDate: string | undefined;
+    if (datePart) {
+        const digits = datePart.replace(/[^0-9]/g, '');
+        if (digits.length === 8) {
+            isoDate = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+        }
+    }
+
+    if (!isoDate) {
+        try {
+            isoDate = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Asia/Taipei',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+            }).format(new Date());
+        } catch (error) {
+            console.error('parseTwseDateTimeParts fallback date error:', error);
+            const now = new Date();
+            isoDate = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+        }
+    }
+
+    const candidate = `${isoDate}T${normalizedTime}+08:00`;
+    const millis = Date.parse(candidate);
+    if (Number.isNaN(millis)) {
+        return undefined;
+    }
+
+    return Math.floor(millis / 1000);
+};
+
+type TwseSymbolRealtimeRecord = {
+    c?: string;
+    n?: string;
+    z?: string;
+    o?: string;
+    h?: string;
+    l?: string;
+    y?: string;
+    v?: string;
+    tv?: string;
+    t?: string;
+    ts?: string;
+    d?: string;
+    tlong?: string | number;
+    ch?: string;
+    ex?: string;
+    a?: string;
+    b?: string;
+    p?: string;
+    pc?: string;
+    u?: string;
+    w?: string;
+    m?: string;
+    s?: string;
+    i?: string;
+    g?: string;
+    f?: string;
+    ip?: string;
+};
+
+type TwseSymbolRealtimePayload = {
+    msgArray?: TwseSymbolRealtimeRecord[];
+    data?: TwseSymbolRealtimeRecord[];
+};
+
+type TwseRealtimeAnyRecord = TwseRealtimeRecord | TwseSymbolRealtimeRecord;
+
+const fetchRealtimeBySymbol = async (stockCode: string): Promise<TwseRealtimeAnyRecord | null> => {
+    try {
+        const payload = await fetchTwseJSON<TwseSymbolRealtimePayload | TwseSymbolRealtimeRecord[] | null>(
+            'stock/api/getStockInfo.jsp',
+            {
+                searchParams: { stockNo: stockCode, response: 'json', json: '1', delay: '0' },
+                cacheMode: 'no-store',
+                includeResponseParam: false,
+            },
+        );
+
+        if (!payload) return null;
+
+        if (Array.isArray(payload)) {
+            const directMatch = payload.find((entry) => {
+                const value = (entry as TwseSymbolRealtimeRecord).c ?? (entry as TwseRealtimeRecord).Code;
+                if (!value) return false;
+                return value.replace(/\.TW$/i, '') === stockCode;
+            });
+            return (directMatch as TwseRealtimeAnyRecord | undefined) ?? null;
+        }
+
+        const candidates = Array.isArray(payload.msgArray)
+            ? payload.msgArray
+            : Array.isArray(payload.data)
+              ? payload.data
+              : [];
+
+        const record = candidates.find((entry) => {
+            const value = entry.c ?? (entry as TwseRealtimeRecord).Code;
+            if (!value) return false;
+            return value.replace(/\.TW$/i, '') === stockCode;
+        });
+
+        return (record as TwseRealtimeAnyRecord | undefined) ?? null;
+    } catch (error) {
+        console.error('fetchRealtimeBySymbol error:', error);
+        return null;
+    }
+};
+
+const extractRecordValue = (record: TwseRealtimeAnyRecord, keys: string[]): string | number | undefined => {
+    const source = record as Record<string, unknown>;
+    for (const key of keys) {
+        const value = source[key];
+        if (value === undefined || value === null || value === '') continue;
+        if (typeof value === 'string' || typeof value === 'number') {
+            return value;
+        }
+    }
+    return undefined;
+};
+
+const extractRecordString = (record: TwseRealtimeAnyRecord, keys: string[]): string | undefined => {
+    const value = extractRecordValue(record, keys);
+    if (value === undefined) return undefined;
+    return typeof value === 'string' ? value : value.toString();
+};
+
+const toQuoteDataFromRealtimeRecord = (record: TwseRealtimeAnyRecord | null | undefined): QuoteData | null => {
+    if (!record) return null;
+
+    const close = parseTwseNumber(
+        extractRecordValue(record, ['ClosingPrice', 'z', 'Price', 'TradePrice', 'Close', 'close', 'ClosePrice', 'closePrice']),
+    );
+    const open = parseTwseNumber(
+        extractRecordValue(record, ['OpeningPrice', 'o', 'OpenPrice', 'Open', 'open', 'Opening', 'openingPrice']),
+    );
+    const high = parseTwseNumber(
+        extractRecordValue(record, ['HighestPrice', 'h', 'HighPrice', 'High', 'high', 'highPrice']),
+    );
+    const low = parseTwseNumber(
+        extractRecordValue(record, ['LowestPrice', 'l', 'LowPrice', 'Low', 'low', 'lowPrice']),
+    );
+    const change = parseTwseNumber(
+        extractRecordValue(record, ['Change', 'PriceChange', 'diff', 'change', 'Chg', 'PriceDiff', 'priceChange']),
+    );
+    const changeRate = parseTwseNumber(
+        extractRecordValue(record, ['ChangeRate', 'PriceChangeRate', 'p', 'pct', 'percent', 'ChangePercent', 'changePercent']),
+    );
+    const previousClose = parseTwseNumber(
+        extractRecordValue(record, ['PreviousClose', 'y', 'ReferencePrice', 'pc', 'prevClose', 'PreviousPrice']),
+    );
+
+    const tlong = parseTwseNumber(extractRecordValue(record, ['tlong', 'timestamp', 'tLong']));
+    let timestamp = tlong !== undefined ? Math.floor(tlong / 1000) : undefined;
+
+    if (!timestamp) {
+        const ts = extractRecordString(record, ['ts', 'TradeTime', 'LastUpdatedTime', 'time', 'Time']);
+        timestamp = parseTwseTimestamp(ts);
+    }
+
+    if (!timestamp) {
+        const tradeTime = extractRecordString(record, ['t', 'time', 'TradeTime']);
+        const tradeDate = extractRecordString(record, ['d', 'date']);
+        timestamp = parseTwseDateTimeParts(tradeDate, tradeTime);
+    }
+
+    const resolvedPreviousClose =
+        previousClose !== undefined
+            ? previousClose
+            : close !== undefined && change !== undefined
+              ? close - change
+              : undefined;
+
+    const resolvedChange =
+        change !== undefined
+            ? change
+            : close !== undefined && resolvedPreviousClose !== undefined
+              ? close - resolvedPreviousClose
+              : undefined;
+
+    const resolvedPercent =
+        changeRate !== undefined
+            ? changeRate
+            : resolvedChange !== undefined && resolvedPreviousClose !== undefined && resolvedPreviousClose !== 0
+              ? (resolvedChange / resolvedPreviousClose) * 100
+              : undefined;
+
+    if (
+        close === undefined &&
+        open === undefined &&
+        high === undefined &&
+        low === undefined &&
+        resolvedPreviousClose === undefined
+    ) {
+        return null;
+    }
+
+    return {
+        c: close,
+        o: open,
+        h: high,
+        l: low,
+        pc: resolvedPreviousClose,
+        dp: resolvedPercent,
+        t: timestamp,
+    } satisfies QuoteData;
+};
+
+const hasCompleteSnapshot = (quote: QuoteData | null) => {
+    if (!quote) return false;
+    const required: (keyof QuoteData)[] = ['c', 'o', 'h', 'l', 'pc'];
+    return required.every((key) => {
+        const value = quote[key];
+        return typeof value === 'number' && Number.isFinite(value);
+    });
+};
+
 export const getTaiwanRealtimeQuote = async (symbol: string): Promise<QuoteData | null> => {
     const stockCode = extractTaiwanStockCode(symbol);
     if (!stockCode) {
@@ -358,36 +591,19 @@ export const getTaiwanRealtimeQuote = async (symbol: string): Promise<QuoteData 
     }
 
     const records = await fetchRealtimeSnapshot();
-    const record = records.find((entry) => entry.Code === stockCode);
-    if (!record) {
-        return null;
+    let quote = toQuoteDataFromRealtimeRecord(records.find((entry) => entry.Code === stockCode));
+
+    if (!hasCompleteSnapshot(quote)) {
+        const fallbackRecord = await fetchRealtimeBySymbol(stockCode);
+        const fallbackQuote = toQuoteDataFromRealtimeRecord(fallbackRecord);
+        if (hasCompleteSnapshot(fallbackQuote)) {
+            quote = fallbackQuote;
+        } else if (!quote) {
+            quote = fallbackQuote;
+        }
     }
 
-    const close = parseTwseNumber(record.ClosingPrice);
-    const open = parseTwseNumber(record.OpeningPrice);
-    const high = parseTwseNumber(record.HighestPrice);
-    const low = parseTwseNumber(record.LowestPrice);
-    const change = parseTwseNumber(record.Change);
-    const changeRate = parseTwseNumber(record.ChangeRate);
-    const timestamp = parseTwseTimestamp(record.TradeTime ?? record.LastUpdatedTime);
-
-    const previousClose = close !== undefined && change !== undefined ? close - change : undefined;
-    const percent =
-        changeRate !== undefined
-            ? changeRate
-            : change !== undefined && previousClose !== undefined && previousClose !== 0
-              ? (change / previousClose) * 100
-              : undefined;
-
-    return {
-        c: close,
-        o: open,
-        h: high,
-        l: low,
-        pc: previousClose,
-        dp: percent,
-        t: timestamp,
-    };
+    return quote;
 };
 
 type TwseCompanyRecord = {
