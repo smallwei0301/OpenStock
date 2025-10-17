@@ -3,6 +3,7 @@ import React from "react";
 import Image from "next/image";
 import {headers} from "next/headers";
 import {redirect} from "next/navigation";
+
 import {getAuth, isAuthConfigured} from "@/lib/better-auth/auth";
 
 type AuthClient = Awaited<ReturnType<typeof getAuth>>;
@@ -16,6 +17,7 @@ const Layout = async ({ children }: { children : React.ReactNode }) => {
         const auth = await getAuth();
         session = await auth.api.getSession({headers: await headers()});
     }
+
 
     if (session?.user) redirect('/')
     return (

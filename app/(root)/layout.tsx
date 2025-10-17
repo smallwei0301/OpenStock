@@ -1,5 +1,7 @@
 import Header from "@/components/Header";
+
 import {getAuth, isAuthConfigured} from "@/lib/better-auth/auth";
+
 import {headers} from "next/headers";
 import {redirect} from "next/navigation";
 import Footer from "@/components/Footer";
@@ -8,6 +10,7 @@ type RootAuthClient = Awaited<ReturnType<typeof getAuth>>;
 type RootSession = Awaited<ReturnType<RootAuthClient["api"]["getSession"]>>;
 
 const Layout = async ({ children }: { children : React.ReactNode }) => {
+
     const authConfigured = isAuthConfigured();
     let session: RootSession | null = null;
 

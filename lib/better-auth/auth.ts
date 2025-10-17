@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { connectToDatabase } from "@/database/mongoose";
 import { nextCookies } from "better-auth/next-js";
+
 import type { Db } from "mongodb";
 
 let authInstance: ReturnType<typeof betterAuth> | null = null;
@@ -21,6 +22,7 @@ export const getAuth = async () => {
         throw new Error("Authentication is not fully configured");
     }
 
+
     if (authInstance) {
         return authInstance;
     }
@@ -38,6 +40,7 @@ export const getAuth = async () => {
     authInstance = betterAuth({
         database: mongodbAdapter(db),
         secret: secret!,
+
         baseURL: process.env.BETTER_AUTH_URL,
         emailAndPassword: {
             enabled: true,

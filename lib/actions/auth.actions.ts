@@ -13,6 +13,7 @@ export const signUpWithEmail = async ({ email, password, fullName, country, inve
         const auth = await getAuth();
         const response = await auth.api.signUpEmail({ body: { email, password, name: fullName } });
 
+
         if (response) {
             await inngest.send({
                 name: 'app/user.created',
@@ -29,12 +30,14 @@ export const signUpWithEmail = async ({ email, password, fullName, country, inve
 
 export const signInWithEmail = async ({ email, password }: SignInFormData) => {
     try {
+
         if (!isAuthConfigured()) {
             return { success: false, error: '驗證服務尚未啟用' };
         }
 
         const auth = await getAuth();
         const response = await auth.api.signInEmail({ body: { email, password } });
+
 
         return { success: true, data: response };
     } catch (e) {
@@ -45,9 +48,11 @@ export const signInWithEmail = async ({ email, password }: SignInFormData) => {
 
 export const signOut = async () => {
     try {
+
         if (!isAuthConfigured()) {
             return { success: false, error: '驗證服務尚未啟用' };
         }
+
 
         const auth = await getAuth();
         await auth.api.signOut({ headers: await headers() });
