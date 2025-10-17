@@ -1,3 +1,5 @@
+import { mapFinnhubSymbolToTradingView } from '@/lib/utils';
+
 export const NAV_ITEMS = [
     { href: '/', label: '儀表板' },
     { href: '/search', label: '搜尋' },
@@ -171,7 +173,7 @@ export const MARKET_DATA_WIDGET_CONFIG = {
 };
 
 export const SYMBOL_INFO_WIDGET_CONFIG = (symbol: string) => ({
-    symbol: symbol.toUpperCase(),
+    symbol: mapFinnhubSymbolToTradingView(symbol),
     colorTheme: 'dark',
     isTransparent: true,
     locale: 'zh_TW',
@@ -192,7 +194,7 @@ export const CANDLE_CHART_WIDGET_CONFIG = (symbol: string) => ({
     locale: 'zh_TW',
     save_image: false,
     style: 1,
-    symbol: symbol.toUpperCase(),
+    symbol: mapFinnhubSymbolToTradingView(symbol),
     theme: 'dark',
     timezone: 'Etc/UTC',
     backgroundColor: '#141414',
@@ -218,7 +220,7 @@ export const BASELINE_WIDGET_CONFIG = (symbol: string) => ({
     locale: 'zh_TW',
     save_image: false,
     style: 10,
-    symbol: symbol.toUpperCase(),
+    symbol: mapFinnhubSymbolToTradingView(symbol),
     theme: 'dark',
     timezone: 'Etc/UTC',
     backgroundColor: '#141414',
@@ -232,7 +234,7 @@ export const BASELINE_WIDGET_CONFIG = (symbol: string) => ({
 });
 
 export const TECHNICAL_ANALYSIS_WIDGET_CONFIG = (symbol: string) => ({
-    symbol: symbol.toUpperCase(),
+    symbol: mapFinnhubSymbolToTradingView(symbol),
     colorTheme: 'dark',
     isTransparent: 'true',
     locale: 'zh_TW',
@@ -243,7 +245,7 @@ export const TECHNICAL_ANALYSIS_WIDGET_CONFIG = (symbol: string) => ({
 });
 
 export const COMPANY_PROFILE_WIDGET_CONFIG = (symbol: string) => ({
-    symbol: symbol.toUpperCase(),
+    symbol: mapFinnhubSymbolToTradingView(symbol),
     colorTheme: 'dark',
     isTransparent: 'true',
     locale: 'zh_TW',
@@ -252,7 +254,7 @@ export const COMPANY_PROFILE_WIDGET_CONFIG = (symbol: string) => ({
 });
 
 export const COMPANY_FINANCIALS_WIDGET_CONFIG = (symbol: string) => ({
-    symbol: symbol.toUpperCase(),
+    symbol: mapFinnhubSymbolToTradingView(symbol),
     colorTheme: 'dark',
     isTransparent: 'true',
     locale: 'zh_TW',

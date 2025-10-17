@@ -137,3 +137,36 @@ export const getFormattedTodayDate = () => new Date().toLocaleDateString('en-US'
     day: 'numeric',
     timeZone: 'UTC',
 });
+
+const FINNHUB_TO_TRADINGVIEW_PREFIX: Record<string, string> = {
+    TW: 'TWSE',
+    TWO: 'TPEX',
+};
+
+/**
+ * Convert Finnhub-formatted ticker (e.g. 2330.TW) to a TradingView compatible symbol (e.g. TWSE:2330).
+ * Returns the original symbol if no mapping is required to avoid breaking existing markets.
+ */
+export const mapFinnhubSymbolToTradingView = (symbol: string) => {
+    const normalized = symbol?.trim().toUpperCase();
+    if (!normalized) return '';
+
+    if (normalized.includes(':')) {
+        return normalized;
+    }
+
+    const match = normalized.match(/^([A-Z0-9\-]+)\.([A-Z0-9]+)$/);
+    if (!match) {
+        return normalized;
+    }
+
+    const [, base, suffix] = match;
+    const prefix = FINNHUB_TO_TRADINGVIEW_PREFIX[suffix as keyof typeof FINNHUB_TO_TRADINGVIEW_PREFIX];
+
+    if (prefix) {
+        return `${prefix}:${base}`;
+    }
+
+    return normalized;
+};
+
