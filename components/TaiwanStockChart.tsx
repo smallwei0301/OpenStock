@@ -82,16 +82,21 @@ const loadLightweightCharts = () =>
 const DEFAULT_RESOLUTION = 'D';
 const DEFAULT_COUNT = 240;
 
+const MAX_AUTO_RETRY = 3;
+const AUTO_RETRY_DELAY_MS = 4_000;
+
 const TaiwanStockChart = ({ symbol, candles, height = 600, className }: TaiwanStockChartProps) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const [candlesData, setCandlesData] = useState<CandleDatum[]>(() => candles ?? []);
     const [isLoading, setIsLoading] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [autoRetryAttempts, setAutoRetryAttempts] = useState(0);
 
     useEffect(() => {
         setCandlesData(candles ?? []);
         if (candles && candles.length > 0) {
             setLoadError(null);
+            setAutoRetryAttempts(0);
         }
     }, [candles, symbol]);
 
@@ -133,10 +138,31 @@ const TaiwanStockChart = ({ symbol, candles, height = 600, className }: TaiwanSt
     }, [symbol]);
 
     useEffect(() => {
-        if ((!candles || candles.length === 0) && candlesData.length === 0 && !isLoading) {
+        if (!symbol) return;
+        if (candlesData.length > 0) return;
+        if (isLoading) return;
+        if (autoRetryAttempts >= MAX_AUTO_RETRY) return;
+        if (candles && candles.length > 0) return;
+
+        const timer = window.setTimeout(() => {
+            setAutoRetryAttempts((previous) => previous + 1);
             void fetchCandles();
-        }
-    }, [candles, candlesData.length, fetchCandles, isLoading]);
+        }, autoRetryAttempts === 0 ? 0 : AUTO_RETRY_DELAY_MS);
+
+        return () => window.clearTimeout(timer);
+    }, [
+        autoRetryAttempts,
+        candles,
+        candlesData.length,
+        fetchCandles,
+        isLoading,
+        symbol,
+    ]);
+
+    const handleManualRefresh = useCallback(() => {
+        setAutoRetryAttempts(0);
+        void fetchCandles();
+    }, [fetchCandles]);
 
     useEffect(() => {
         let disposed = false;
@@ -270,7 +296,7 @@ const TaiwanStockChart = ({ symbol, candles, height = 600, className }: TaiwanSt
                 <span>{isLoading ? '正在載入台股走勢資料…' : loadError ?? '暫無可用的台股走勢資料。'}</span>
                 <button
                     type="button"
-                    onClick={() => void fetchCandles()}
+                    onClick={handleManualRefresh}
                     disabled={isLoading}
                     className="inline-flex items-center rounded-lg border border-amber-400/60 px-3 py-1.5 text-xs font-medium text-amber-50 transition-colors hover:border-amber-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                 >
