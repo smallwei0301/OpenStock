@@ -137,3 +137,30 @@ export const getFormattedTodayDate = () => new Date().toLocaleDateString('en-US'
     day: 'numeric',
     timeZone: 'UTC',
 });
+
+const TRADINGVIEW_SUFFIX_TO_EXCHANGE: Record<string, string> = {
+    TW: 'TWSE',
+    TWO: 'TPEX',
+};
+
+export const toTradingViewSymbol = (symbol: string): string => {
+    const trimmed = symbol?.trim();
+    if (!trimmed) return '';
+
+    const upper = trimmed.toUpperCase();
+
+    if (upper.includes(':')) {
+        return upper;
+    }
+
+    const suffixMatch = upper.match(/^(?<base>[A-Z0-9_-]+)\.(?<suffix>[A-Z0-9]+)$/);
+    if (suffixMatch?.groups) {
+        const { base, suffix } = suffixMatch.groups as { base: string; suffix: string };
+        const exchange = TRADINGVIEW_SUFFIX_TO_EXCHANGE[suffix];
+        if (exchange) {
+            return `${exchange}:${base}`;
+        }
+    }
+
+    return upper;
+};
