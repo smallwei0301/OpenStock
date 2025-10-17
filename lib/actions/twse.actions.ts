@@ -10,6 +10,16 @@ const TWSE_REQUEST_HEADERS: Record<string, string> = {
     Accept: 'application/json',
 };
 
+class TwseFetchError extends Error {
+    status?: number;
+
+    constructor(message: string, status?: number) {
+        super(message);
+        this.name = 'TwseFetchError';
+        this.status = status;
+    }
+}
+
 type FetchOptions = {
     searchParams?: Record<string, string>;
     revalidate?: number;
@@ -37,7 +47,7 @@ const fetchTwseJSON = async <T>(path: string, options: FetchOptions = {}): Promi
     const res = await fetch(url.toString(), init);
     if (!res.ok) {
         const text = await res.text().catch(() => '');
-        throw new Error(`TWSE fetch failed ${res.status}: ${text}`);
+        throw new TwseFetchError(`TWSE fetch failed ${res.status}: ${text}`, res.status);
     }
 
     return (await res.json()) as T;
@@ -151,16 +161,39 @@ export const getTaiwanStockCandles = async (
         const toDate = new Date(toTimestamp * 1000);
         const monthsToFetch = 18;
         const collected: CandleDatum[] = [];
+        let encounteredNetworkIssue = false;
 
         for (let offset = 0; offset < monthsToFetch && collected.length < targetCount * 2; offset++) {
             const cursor = new Date(Date.UTC(toDate.getUTCFullYear(), toDate.getUTCMonth() - offset, 1));
             const dateParam = `${cursor.getUTCFullYear()}${String(cursor.getUTCMonth() + 1).padStart(2, '0')}01`;
-            const records = await fetchMonthlyDailyRecords(stockCode, dateParam);
+            try {
+                const records = await fetchMonthlyDailyRecords(stockCode, dateParam);
 
-            for (const record of records) {
-                const candle = toCandleDatum(record);
-                if (!candle) continue;
-                collected.push(candle);
+                for (const record of records) {
+                    const candle = toCandleDatum(record);
+                    if (!candle) continue;
+                    collected.push(candle);
+                }
+            } catch (error) {
+                if (error instanceof TwseFetchError) {
+                    if (error.status === 429) {
+                        return { candles: [], reason: 'rate-limit' };
+                    }
+
+                    if (error.status === 404 || error.status === 400) {
+                        continue;
+                    }
+                }
+
+                encounteredNetworkIssue = true;
+
+                if (process.env.NODE_ENV !== 'production') {
+                    console.warn('fetchMonthlyDailyRecords error:', {
+                        stockCode,
+                        dateParam,
+                        error,
+                    });
+                }
             }
         }
 
@@ -169,7 +202,7 @@ export const getTaiwanStockCandles = async (
             .sort((a, b) => a.time - b.time);
 
         if (normalized.length === 0) {
-            return { candles: [], reason: 'no-data' };
+            return { candles: [], reason: encounteredNetworkIssue ? 'network-error' : 'no-data' };
         }
 
         const trimmed = normalized.slice(-targetCount);
