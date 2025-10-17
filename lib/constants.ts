@@ -1,5 +1,8 @@
 import { mapFinnhubSymbolToTradingView } from '@/lib/utils';
 
+export const LIGHTWEIGHT_CHARTS_SCRIPT_SRC =
+    'https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js';
+
 export const NAV_ITEMS = [
     { href: '/', label: '儀表板' },
     { href: '/search', label: '搜尋' },

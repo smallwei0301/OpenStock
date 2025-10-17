@@ -143,6 +143,8 @@ const FINNHUB_TO_TRADINGVIEW_PREFIX: Record<string, string> = {
     TWO: 'TPEX',
 };
 
+const TAIWAN_SYMBOL_SUFFIXES = ['.TW', '.TWO'];
+
 /**
  * Convert Finnhub-formatted ticker (e.g. 2330.TW) to a TradingView compatible symbol (e.g. TWSE:2330).
  * Returns the original symbol if no mapping is required to avoid breaking existing markets.
@@ -168,5 +170,86 @@ export const mapFinnhubSymbolToTradingView = (symbol: string) => {
     }
 
     return normalized;
+};
+
+export const isTaiwanEquitySymbol = (symbol: string) => {
+    const normalized = symbol?.trim().toUpperCase();
+    if (!normalized) return false;
+    return TAIWAN_SYMBOL_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
+};
+
+type CurrencyFormatOptions = {
+    locale?: string;
+    maximumFractionDigits?: number;
+    minimumFractionDigits?: number;
+};
+
+const DEFAULT_CURRENCY_OPTIONS: Required<CurrencyFormatOptions> = {
+    locale: 'zh-TW',
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+};
+
+export const formatLocalizedCurrency = (
+    value?: number,
+    currency: string = 'USD',
+    options: CurrencyFormatOptions = {},
+) => {
+    if (value === undefined || value === null || !Number.isFinite(value)) return '—';
+
+    const { locale, maximumFractionDigits, minimumFractionDigits } = {
+        ...DEFAULT_CURRENCY_OPTIONS,
+        ...options,
+    };
+
+    try {
+        return new Intl.NumberFormat(locale, {
+            style: 'currency',
+            currency,
+            maximumFractionDigits,
+            minimumFractionDigits,
+        }).format(value);
+    } catch (error) {
+        console.error('formatLocalizedCurrency error:', error);
+        return value.toFixed(Math.min(2, maximumFractionDigits));
+    }
+};
+
+export const formatCompactCurrency = (value?: number, currency = 'USD', locale = 'zh-TW') => {
+    if (value === undefined || value === null || !Number.isFinite(value)) return '—';
+
+    try {
+        return new Intl.NumberFormat(locale, {
+            style: 'currency',
+            currency,
+            notation: 'compact',
+            compactDisplay: 'short',
+            maximumFractionDigits: 2,
+        }).format(value);
+    } catch (error) {
+        console.error('formatCompactCurrency error:', error);
+        return formatLocalizedCurrency(value, currency, { locale });
+    }
+};
+
+export const formatTimestampToLocale = (
+    timestamp?: number,
+    locale = 'zh-TW',
+    timeZone = 'Asia/Taipei',
+) => {
+    if (!timestamp || !Number.isFinite(timestamp)) return '';
+
+    const date = new Date(timestamp * 1000);
+    try {
+        return new Intl.DateTimeFormat(locale, {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+            timeZone,
+            hour12: false,
+        }).format(date);
+    } catch (error) {
+        console.error('formatTimestampToLocale error:', error);
+        return date.toISOString();
+    }
 };
 

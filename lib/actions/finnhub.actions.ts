@@ -11,6 +11,16 @@ type FinnhubProfileResponse = {
     exchange?: string;
 };
 
+type FinnhubCandleResponse = {
+    c?: number[];
+    o?: number[];
+    h?: number[];
+    l?: number[];
+    v?: number[];
+    t?: number[];
+    s?: 'ok' | 'no_data';
+};
+
 const FINNHUB_BASE_URL = 'https://finnhub.io/api/v1';
 
 const resolveFinnhubToken = () =>
@@ -108,6 +118,93 @@ export async function getNews(symbols?: string[]): Promise<MarketNewsArticle[]> 
     } catch (err) {
         console.error('getNews error:', err);
         throw new Error('Failed to fetch news');
+    }
+}
+
+const RESOLUTION_IN_SECONDS: Record<string, number> = {
+    '1': 60,
+    '5': 300,
+    '15': 900,
+    '30': 1_800,
+    '60': 3_600,
+    D: 86_400,
+    W: 604_800,
+    M: 2_592_000,
+};
+
+type CandleResolution = keyof typeof RESOLUTION_IN_SECONDS;
+
+const resolveResolutionSeconds = (resolution: CandleResolution) => RESOLUTION_IN_SECONDS[resolution] ?? RESOLUTION_IN_SECONDS.D;
+
+type CandleOptions = {
+    resolution?: CandleResolution;
+    count?: number;
+    to?: number;
+};
+
+export async function getStockCandles(symbol: string, options: CandleOptions = {}): Promise<CandleDatum[]> {
+    try {
+        const token = resolveFinnhubToken();
+        if (!token) {
+            throw new Error('FINNHUB API key is not configured');
+        }
+
+        const normalizedSymbol = symbol?.trim().toUpperCase();
+        if (!normalizedSymbol) {
+            return [];
+        }
+
+        const resolution: CandleResolution = options.resolution ?? 'D';
+        const resolutionSeconds = resolveResolutionSeconds(resolution);
+        const to = options.to ?? Math.floor(Date.now() / 1000);
+        const count = Math.max(options.count ?? 180, 1);
+        const from = to - resolutionSeconds * count;
+
+        const url = `${FINNHUB_BASE_URL}/stock/candle?symbol=${encodeURIComponent(normalizedSymbol)}&resolution=${encodeURIComponent(
+            resolution,
+        )}&from=${from}&to=${to}&token=${token}`;
+
+        const data = await fetchJSON<FinnhubCandleResponse>(url, 600);
+
+        if (!data || data.s !== 'ok' || !Array.isArray(data.t)) {
+            if (data?.s === 'no_data') {
+                return [];
+            }
+            throw new Error(`Unexpected candle response for ${normalizedSymbol}: ${JSON.stringify(data)}`);
+        }
+
+        const { c = [], o = [], h = [], l = [], v = [], t = [] } = data;
+
+        const candles: CandleDatum[] = t
+            .map((time, index) => {
+                const close = c[index];
+                const open = o[index] ?? close;
+                const high = h[index] ?? Math.max(open ?? close ?? 0, close ?? open ?? 0);
+                const low = l[index] ?? Math.min(open ?? close ?? 0, close ?? open ?? 0);
+                const volume = v[index];
+
+                if (!Number.isFinite(time) || !Number.isFinite(close ?? open ?? high ?? low)) {
+                    return undefined;
+                }
+
+                const fallback = typeof close === 'number' ? close : typeof open === 'number' ? open : 0;
+
+                return {
+                    time,
+                    close: typeof close === 'number' ? close : fallback,
+                    open: typeof open === 'number' ? open : fallback,
+                    high: typeof high === 'number' ? high : fallback,
+                    low: typeof low === 'number' ? low : fallback,
+                    volume: typeof volume === 'number' ? volume : undefined,
+                } satisfies CandleDatum;
+            })
+            .filter((entry): entry is CandleDatum => Boolean(entry))
+            .sort((a, b) => a.time - b.time);
+
+        return candles;
+    } catch (err) {
+        console.error('getStockCandles error:', err);
+        return [];
     }
 }
 
