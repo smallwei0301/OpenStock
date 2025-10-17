@@ -1,39 +1,74 @@
 'use client'
 
-
-import React from 'react'
-import {NAV_ITEMS} from "@/lib/constants";
 import Link from "next/link";
-import {usePathname} from "next/navigation";
-import SearchCommand from "@/components/SearchCommand";
+import { usePathname } from "next/navigation";
 
-const NavItems = ({initialStocks}: { initialStocks: StockWithWatchlistStatus[]}) => {
-    const pathname = usePathname()
+import SearchCommand from "@/components/SearchCommand";
+import { NAV_ITEMS } from "@/lib/constants";
+import { cn } from "@/lib/utils";
+
+type NavItemsProps = {
+    initialStocks: StockWithWatchlistStatus[];
+    className?: string;
+    includeSearchShortcut?: boolean;
+    onNavigate?: () => void;
+    searchLabel?: string;
+    searchVariant?: 'button' | 'text';
+};
+
+const NavItems = ({
+    initialStocks,
+    className,
+    includeSearchShortcut = false,
+    onNavigate,
+    searchLabel = '快速搜尋',
+    searchVariant = 'text',
+}: NavItemsProps) => {
+    const pathname = usePathname();
 
     const isActive = (path: string) => {
-        if (path ==='/') return pathname === '/'
+        if (path === '/') return pathname === '/';
 
-        return  pathname.startsWith(path);
-    }
+        return pathname.startsWith(path);
+    };
+
+    const handleNavigate = () => {
+        onNavigate?.();
+    };
+
     return (
-        <ul className="flex flex-col sm:flex-row p-2 gap-3 sm:gap-10 font-medium">
-            {NAV_ITEMS.map(({href, label}) => {
-                if (href === '/search') return (
-                    <li key="search-trigger">
-                        <SearchCommand
-                            renderAs="text"
-                            label="Search"
-                            initialStocks={initialStocks}
-                        />
-                    </li>
-                )
-                return <li key={href}>
-                    <Link href={href} className={`hover:text-teal-500 transition-colors ${isActive(href) ? 'text-gray-100' : ''}`}>
+        <ul
+            className={cn(
+                "flex flex-col gap-3 p-2 text-base font-medium sm:flex-row sm:gap-8",
+                className,
+            )}
+        >
+            {NAV_ITEMS.map(({ href, label }) => (
+                <li key={href}>
+                    <Link
+                        href={href}
+                        onClick={handleNavigate}
+                        className={cn(
+                            "transition-colors hover:text-teal-400",
+                            isActive(href) ? "text-gray-100" : "text-gray-400",
+                        )}
+                    >
                         {label}
                     </Link>
                 </li>
-            })}
+            ))}
+            {includeSearchShortcut && (
+                <li key="search-shortcut" className="pt-1 sm:pt-0">
+                    <SearchCommand
+                        renderAs={searchVariant}
+                        label={searchLabel}
+                        initialStocks={initialStocks}
+                        onNavigate={onNavigate}
+                    />
+                </li>
+            )}
         </ul>
-    )
-}
-export default NavItems
+    );
+};
+
+export default NavItems;
