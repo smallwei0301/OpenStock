@@ -137,3 +137,30 @@ export const getFormattedTodayDate = () => new Date().toLocaleDateString('en-US'
     day: 'numeric',
     timeZone: 'UTC',
 });
+
+const FINNHUB_TO_TRADINGVIEW_EXCHANGES: Record<string, string> = {
+    TW: 'TWSE',
+    TWO: 'TPEX',
+};
+
+export const resolveTradingViewSymbol = (symbol: string) => {
+    const trimmed = symbol?.trim();
+    if (!trimmed) return '';
+
+    const upperCased = trimmed.toUpperCase();
+    if (upperCased.includes(':')) {
+        return upperCased;
+    }
+
+    const [base, suffix] = upperCased.split('.');
+    if (!suffix) {
+        return base;
+    }
+
+    const mappedExchange = FINNHUB_TO_TRADINGVIEW_EXCHANGES[suffix];
+    if (mappedExchange) {
+        return `${mappedExchange}:${base}`;
+    }
+
+    return base;
+};
