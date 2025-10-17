@@ -32,11 +32,11 @@ const DEFAULT_NO_DATA_MESSAGE = '暫時取得不到該股票的歷史走勢，�
 
 const REASON_MESSAGE_MAP: Record<CandleDataIssue, string> = {
     'no-data': DEFAULT_NO_DATA_MESSAGE,
-    'rate-limit': 'Finnhub API 呼叫已達今日流量上限，請稍後再重新整理。',
+    'rate-limit': '證交所 OPENAPI 呼叫已達今日流量上限，請稍後再重新整理。',
     'not-configured': '系統尚未完成台股資料來源設定，暫無法載入走勢。',
     'invalid-symbol': '找不到對應的台股代號，請確認輸入是否正確。',
-    'network-error': '台股走勢載入失敗，請確認網路連線後再試一次。',
-    'permission-denied': 'Finnhub API 權限不足，請確認方案是否支援台股歷史走勢資料。',
+    'network-error': '台股走勢載入失敗，請確認網路或證交所 OPENAPI 狀態後再試一次。',
+    'permission-denied': '資料授權不足，請確認是否已開通證交所相關歷史走勢權限。',
 };
 
 const resolveReasonMessage = (reason?: CandleDataIssue | null) =>

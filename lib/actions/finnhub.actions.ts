@@ -7,10 +7,12 @@ import {
     formatMarketCapValue,
     formatPrice,
     mapFinnhubSymbolToTradingView,
+    isTaiwanEquitySymbol,
 } from '@/lib/utils';
 import { POPULAR_STOCK_SYMBOLS } from '@/lib/constants';
 import { cache } from 'react';
 import { WatchlistItem } from '@/database/models/watchlist.model';
+import { getTaiwanStockCandles } from '@/lib/actions/twse.actions';
 
 type FinnhubProfileResponse = {
     name?: string;
@@ -259,14 +261,18 @@ const fetchCandlesWithRange = async (
 
 export async function getStockCandles(symbol: string, options: CandleOptions = {}): Promise<StockCandlesResult> {
     try {
-        const token = resolveFinnhubToken();
-        if (!token) {
-            return { candles: [], reason: 'not-configured' };
-        }
-
         const normalizedSymbol = symbol?.trim().toUpperCase();
         if (!normalizedSymbol) {
             return { candles: [], reason: 'invalid-symbol' };
+        }
+
+        if (isTaiwanEquitySymbol(normalizedSymbol)) {
+            return getTaiwanStockCandles(normalizedSymbol, options);
+        }
+
+        const token = resolveFinnhubToken();
+        if (!token) {
+            return { candles: [], reason: 'not-configured' };
         }
 
         const resolution: CandleResolution = options.resolution ?? 'D';

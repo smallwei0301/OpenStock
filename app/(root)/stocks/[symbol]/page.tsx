@@ -15,9 +15,9 @@ import {
     getCompanyFinancials,
     getCompanyProfile,
     getQuote,
-    getStockCandles,
     isFinnhubConfigured,
 } from "@/lib/actions/finnhub.actions";
+import { getTaiwanSnapshotBundle } from "@/lib/actions/twse.actions";
 import { getWatchlistSymbolsByUserId } from "@/lib/actions/watchlist.actions";
 import { getAuth, isAuthConfigured } from "@/lib/better-auth/auth";
 import { headers } from "next/headers";
@@ -45,7 +45,23 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
     let candles: CandleDatum[] = [];
     let candleIssue: CandleDataIssue | undefined;
 
-    if (finnHubConfigured) {
+    if (isTaiwanSymbol) {
+        try {
+            const { profile: twProfile, quote: twQuote, candles: twCandles, candleIssue: twIssue } =
+                await getTaiwanSnapshotBundle(normalizedSymbol);
+
+            profile = twProfile;
+            quote = twQuote;
+            candles = Array.isArray(twCandles) ? twCandles : [];
+            candleIssue = twIssue;
+
+            if (twProfile?.name) {
+                displayName = twProfile.name;
+            }
+        } catch (err) {
+            console.error("taiwan stock data hydrate error:", err);
+        }
+    } else if (finnHubConfigured) {
         try {
             [profile, quote, financials] = await Promise.all([
                 getCompanyProfile(normalizedSymbol),
@@ -57,11 +73,6 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                 displayName = profile.name;
             }
 
-            if (isTaiwanSymbol) {
-                const candleResult = await getStockCandles(normalizedSymbol, { resolution: 'D', count: 240 });
-                candles = candleResult.candles;
-                candleIssue = candleResult.reason;
-            }
         } catch (err) {
             console.error("stock data hydrate error:", err);
         }
@@ -160,8 +171,8 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
                             <section className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-6 text-sm text-amber-100">
                                 <h3 className="text-base font-semibold text-amber-100">TradingView 授權提示</h3>
                                 <p className="mt-3 leading-relaxed text-amber-50/80">
-                                    台灣交易所標的在 TradingView 官方插件上受限於資料授權，因此我們改採 Finnhub 即時行情搭配 TradingView
-                                    Lightweight Charts 呈現互動走勢。若您仍需進入 TradingView 完整版本，可點擊下方按鈕開啟新視窗。
+                                    台灣交易所標的在 TradingView 官方插件上受限於資料授權，因此我們改採證交所 OPENAPI 的即時行情搭配
+                                    TradingView Lightweight Charts 呈現互動走勢。若您仍需進入 TradingView 完整版本，可點擊下方按鈕開啟新視窗。
                                 </p>
                                 <a
                                     href={`https://www.tradingview.com/symbols/${tradingViewSymbolUrl}/`}

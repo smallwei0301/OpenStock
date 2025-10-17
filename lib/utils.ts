@@ -178,6 +178,22 @@ export const isTaiwanEquitySymbol = (symbol: string) => {
     return TAIWAN_SYMBOL_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
 };
 
+export const extractTaiwanStockCode = (symbol: string) => {
+    const normalized = symbol?.trim().toUpperCase();
+    if (!normalized) return null;
+
+    const parts = normalized.split(/[:.]/);
+    const candidate = parts.length > 1 ? parts[parts.length - 1] : normalized;
+    const digitsOnly = candidate.replace(/[^0-9]/g, '');
+
+    if (digitsOnly.length === 4) {
+        return digitsOnly;
+    }
+
+    const fourDigitMatch = normalized.match(/(\d{4})/);
+    return fourDigitMatch ? fourDigitMatch[1] : null;
+};
+
 type CurrencyFormatOptions = {
     locale?: string;
     maximumFractionDigits?: number;
