@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 
 const databaseConfigured = Boolean(process.env.MONGODB_URI);
 const WatchlistPage = async () => {
-    const finnHubConfigured = isFinnhubConfigured();
+    const finnHubConfigured = await isFinnhubConfigured();
     const authConfigured = isAuthConfigured();
 
     if (!authConfigured || !databaseConfigured) {

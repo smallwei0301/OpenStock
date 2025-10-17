@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        if (!isFinnhubConfigured()) {
+        if (!(await isFinnhubConfigured())) {
             return NextResponse.json(
                 { stocks: [], error: "FINNHUB API 尚未設定，無法查詢即時市場資料。" },
                 { status: 503 },

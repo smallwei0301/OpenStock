@@ -14,7 +14,7 @@ import { getAuth, isAuthConfigured } from "@/lib/better-auth/auth";
 import { headers } from "next/headers";
 
 export default async function StockDetails({ params }: StockDetailsPageProps) {
-    const finnHubConfigured = isFinnhubConfigured();
+    const finnHubConfigured = await isFinnhubConfigured();
     const { symbol } = await params;
     const normalizedSymbol = symbol.toUpperCase();
     const scriptUrl = `https://s3.tradingview.com/external-embedding/embed-widget-`;

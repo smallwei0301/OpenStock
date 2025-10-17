@@ -23,3 +23,7 @@
 - Version Code: `netlify-ready-v20250221`
 - Description: 修正 Finnhub API 金鑰偵測邏輯並於伺服器／客戶端搜尋流程中即時反應設定狀態，確保已配置金鑰的 Netlify 部署能啟用所有市場資料功能。
 - Date: 2025-02-21
+
+- Version Code: `netlify-ready-v20250222`
+- Description: 將 Finnhub 設定檢查改寫為非同步 Server Action 並更新相關頁面呼叫方式，確保 Netlify 建置流程符合 Next.js 規範。
+- Date: 2025-02-22

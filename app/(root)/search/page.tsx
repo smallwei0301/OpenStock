@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 const SearchPage = async () => {
-    const finnHubConfigured = isFinnhubConfigured();
+    const finnHubConfigured = await isFinnhubConfigured();
     const authConfigured = isAuthConfigured();
     let watchlistSymbols: string[] = [];
     let isAuthenticated = false;
