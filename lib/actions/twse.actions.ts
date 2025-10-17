@@ -5,9 +5,12 @@ import { cache } from 'react';
 import { extractTaiwanStockCode } from '@/lib/utils';
 
 const TWSE_BASE_URL = 'https://openapi.twse.com.tw/v1';
+const TWSE_LEGACY_BASE_URL = 'https://www.twse.com.tw';
 const TWSE_REQUEST_HEADERS: Record<string, string> = {
     'User-Agent': 'Lazybacktest/1.0 (+https://lazybacktest.com)',
     Accept: 'application/json',
+    'Accept-Language': 'zh-TW,zh;q=0.9',
+    Referer: 'https://lazybacktest.com/',
 };
 
 class TwseFetchError extends Error {
@@ -96,13 +99,111 @@ const parseTwseDate = (value?: string): number | undefined => {
     return Number.isFinite(date.valueOf()) ? Math.floor(date.getTime() / 1000) : undefined;
 };
 
-const fetchMonthlyDailyRecords = async (stockCode: string, dateParam: string) => {
-    const data = await fetchTwseJSON<TwseDailyResponse>('exchangeReport/STOCK_DAY', {
-        searchParams: { stockNo: stockCode, date: dateParam },
-        revalidate: 900,
-    });
+type TwseLegacyDailyResponse = {
+    stat?: string;
+    data?: string[][];
+    fields?: string[];
+};
 
-    return Array.isArray(data) ? data : [];
+const normalizeLegacyRecord = (fields: string[] | undefined, row: string[]): TwseDailyRecord | undefined => {
+    if (!Array.isArray(row) || row.length === 0) return undefined;
+
+    const safeGet = (index: number | undefined, fallbackIndex?: number) => {
+        if (index !== undefined && index >= 0 && index < row.length) {
+            return row[index];
+        }
+        if (fallbackIndex !== undefined && fallbackIndex >= 0 && fallbackIndex < row.length) {
+            return row[fallbackIndex];
+        }
+        return undefined;
+    };
+
+    const resolveIndex = (label: string, defaultIndex: number) => {
+        if (Array.isArray(fields)) {
+            const index = fields.indexOf(label);
+            if (index >= 0) {
+                return index;
+            }
+        }
+        return defaultIndex;
+    };
+
+    const date = safeGet(resolveIndex('日期', 0), 0);
+    const volume = safeGet(resolveIndex('成交股數', 1), 1);
+    const open = safeGet(resolveIndex('開盤價', 3), 3);
+    const high = safeGet(resolveIndex('最高價', 4), 4);
+    const low = safeGet(resolveIndex('最低價', 5), 5);
+    const close = safeGet(resolveIndex('收盤價', 6), 6);
+
+    if (!date) return undefined;
+
+    return {
+        Date: date,
+        Volume: volume ?? '',
+        Open: open ?? '',
+        High: high ?? '',
+        Low: low ?? '',
+        Close: close ?? '',
+    } satisfies TwseDailyRecord;
+};
+
+const fetchLegacyMonthlyDailyRecords = async (stockCode: string, dateParam: string) => {
+    const url = new URL(`${TWSE_LEGACY_BASE_URL}/exchangeReport/STOCK_DAY`);
+    url.searchParams.set('response', 'json');
+    url.searchParams.set('date', dateParam);
+    url.searchParams.set('stockNo', stockCode);
+
+    const res = await fetch(url.toString(), { headers: TWSE_REQUEST_HEADERS, cache: 'no-store' });
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new TwseFetchError(`TWSE legacy fetch failed ${res.status}: ${text}`, res.status);
+    }
+
+    const payload = (await res.json()) as TwseLegacyDailyResponse;
+    if (!payload || payload.stat !== 'OK' || !Array.isArray(payload.data)) {
+        return [];
+    }
+
+    const fields = Array.isArray(payload.fields) ? payload.fields : undefined;
+    const records: TwseDailyRecord[] = [];
+    for (const row of payload.data) {
+        const record = normalizeLegacyRecord(fields, row);
+        if (record) {
+            records.push(record);
+        }
+    }
+
+    return records;
+};
+
+const fetchMonthlyDailyRecords = async (stockCode: string, dateParam: string) => {
+    try {
+        const data = await fetchTwseJSON<TwseDailyResponse>('exchangeReport/STOCK_DAY', {
+            searchParams: { stockNo: stockCode, date: dateParam },
+            revalidate: 900,
+        });
+
+        return Array.isArray(data) ? data : [];
+    } catch (error) {
+        if (error instanceof TwseFetchError) {
+            if (error.status === 429) {
+                throw error;
+            }
+
+            if (error.status === 404 || error.status === 400) {
+                return [];
+            }
+        }
+
+        try {
+            return await fetchLegacyMonthlyDailyRecords(stockCode, dateParam);
+        } catch (legacyError) {
+            if (legacyError instanceof TwseFetchError && legacyError.status === 429) {
+                throw legacyError;
+            }
+            throw legacyError instanceof Error ? legacyError : new Error('TWSE legacy fetch failed');
+        }
+    }
 };
 
 const uniqueCandles = (candles: CandleDatum[]): CandleDatum[] => {
