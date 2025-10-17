@@ -15,3 +15,7 @@
 - Version Code: `netlify-ready-v20250219`
 - Description: 補齊股票搜尋、自選清單與即時行情功能，確保與開源專案一致並支援 Netlify 無資料庫／無 API 金鑰情境。
 - Date: 2025-02-19
+
+- Version Code: `netlify-ready-v20250220`
+- Description: 強化搜尋體驗與導覽層，加入桌面與行動版完整搜尋頁連結、指令面板與手機選單，確保所有開源功能在前端可視可用。
+- Date: 2025-02-20

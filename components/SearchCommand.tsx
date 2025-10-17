@@ -8,11 +8,22 @@ import Link from "next/link";
 import {searchStocks} from "@/lib/actions/finnhub.actions";
 import {useDebounce} from "@/hooks/useDebounce";
 
-export default function SearchCommand({ renderAs = 'button', label = '新增股票', initialStocks }: SearchCommandProps) {
+export default function SearchCommand({
+    renderAs = 'button',
+    label = '新增股票',
+    initialStocks,
+    onNavigate,
+}: SearchCommandProps) {
     const [open, setOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState("")
     const [loading, setLoading] = useState(false)
     const [stocks, setStocks] = useState<StockWithWatchlistStatus[]>(initialStocks);
+
+    useEffect(() => {
+        if (!searchTerm.trim()) {
+            setStocks(initialStocks);
+        }
+    }, [initialStocks, searchTerm]);
 
     const isSearchMode = !!searchTerm.trim();
     const displayStocks = isSearchMode ? stocks : stocks?.slice(0, 10);
@@ -52,6 +63,7 @@ export default function SearchCommand({ renderAs = 'button', label = '新增股�
         setOpen(false);
         setSearchTerm("");
         setStocks(initialStocks);
+        onNavigate?.();
     }
 
     return (
@@ -59,13 +71,22 @@ export default function SearchCommand({ renderAs = 'button', label = '新增股�
             {renderAs === 'text' ? (
                 <button
                     type="button"
-                    onClick={() => setOpen(true)}
+                    onClick={() => {
+                        onNavigate?.();
+                        setOpen(true);
+                    }}
                     className="search-text"
                 >
                     {label}
                 </button>
             ): (
-                <Button onClick={() => setOpen(true)} className="search-btn">
+                <Button
+                    onClick={() => {
+                        onNavigate?.();
+                        setOpen(true);
+                    }}
+                    className="search-btn"
+                >
                     {label}
                 </Button>
             )}

@@ -1,8 +1,16 @@
+import type { Metadata } from "next";
+import { headers } from "next/headers";
+
 import SearchExperience from "./SearchExperience";
 import { searchStocks } from "@/lib/actions/finnhub.actions";
-import { getAuth, isAuthConfigured } from "@/lib/better-auth/auth";
-import { headers } from "next/headers";
 import { getWatchlistSymbolsByUserId } from "@/lib/actions/watchlist.actions";
+import { getAuth, isAuthConfigured } from "@/lib/better-auth/auth";
+
+export const metadata: Metadata = {
+    title: "股票搜尋 | Lazybacktest",
+    description:
+        "透過 Finnhub 即時市場資料快速查找股票、ETF 與公司資訊，並同步管理自選清單。",
+};
 
 const finnHubConfigured = Boolean(process.env.FINNHUB_API_KEY || process.env.NEXT_PUBLIC_FINNHUB_API_KEY);
 

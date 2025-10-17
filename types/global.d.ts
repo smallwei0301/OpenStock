@@ -59,6 +59,7 @@ declare global {
         renderAs?: 'button' | 'text';
         label?: string;
         initialStocks: StockWithWatchlistStatus[];
+        onNavigate?: () => void;
     };
 
     type WelcomeEmailData = {
