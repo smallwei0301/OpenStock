@@ -6,6 +6,8 @@ import { extractTaiwanStockCode } from '@/lib/utils';
 
 const TWSE_BASE_URL = 'https://openapi.twse.com.tw/v1';
 const TWSE_LEGACY_BASE_URL = 'https://www.twse.com.tw';
+const TWSE_REQUEST_TIMEOUT_MS = 2500;
+const TWSE_SNAPSHOT_TIMEOUT_MS = 6000;
 const TWSE_REQUEST_HEADERS: Record<string, string> = {
     'User-Agent': 'Lazybacktest/1.0 (+https://lazybacktest.com)',
     Accept: 'application/json',
@@ -30,6 +32,31 @@ type FetchOptions = {
     includeResponseParam?: boolean;
 };
 
+const isAbortError = (error: unknown): boolean =>
+    !!error && typeof error === 'object' && 'name' in error && (error as { name?: string }).name === 'AbortError';
+
+const withTimeoutFallback = async <T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> => {
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+    const timeoutPromise = new Promise<T>((resolve) => {
+        timeoutHandle = setTimeout(() => resolve(fallback), timeoutMs);
+    });
+
+    try {
+        return await Promise.race([promise, timeoutPromise]);
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'production') {
+            console.warn('withTimeoutFallback error:', error);
+        }
+        return fallback;
+    } finally {
+        if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+        }
+        promise.catch(() => undefined);
+    }
+};
+
 const fetchTwseJSON = async <T>(path: string, options: FetchOptions = {}): Promise<T> => {
     const url = new URL(`${TWSE_BASE_URL}/${path.replace(/^\//, '')}`);
     const params =
@@ -49,13 +76,38 @@ const fetchTwseJSON = async <T>(path: string, options: FetchOptions = {}): Promi
         init.next = { revalidate: options.revalidate };
     }
 
-    const res = await fetch(url.toString(), init);
-    if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new TwseFetchError(`TWSE fetch failed ${res.status}: ${text}`, res.status);
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    if (controller) {
+        timeout = setTimeout(() => controller.abort(), TWSE_REQUEST_TIMEOUT_MS);
+        init.signal = controller.signal;
     }
 
-    return (await res.json()) as T;
+    try {
+        const res = await fetch(url.toString(), init);
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new TwseFetchError(`TWSE fetch failed ${res.status}: ${text}`, res.status);
+        }
+
+        return (await res.json()) as T;
+    } catch (error) {
+        if (error instanceof TwseFetchError) {
+            throw error;
+        }
+
+        if (isAbortError(error)) {
+            throw new TwseFetchError(`TWSE fetch timeout after ${TWSE_REQUEST_TIMEOUT_MS}ms`, 408);
+        }
+
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        throw new TwseFetchError(`TWSE fetch network error: ${message}`, 503);
+    } finally {
+        if (timeout) {
+            clearTimeout(timeout);
+        }
+    }
 };
 
 type TwseDailyRecord = {
@@ -155,27 +207,53 @@ const fetchLegacyMonthlyDailyRecords = async (stockCode: string, dateParam: stri
     url.searchParams.set('date', dateParam);
     url.searchParams.set('stockNo', stockCode);
 
-    const res = await fetch(url.toString(), { headers: TWSE_REQUEST_HEADERS, cache: 'no-store' });
-    if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new TwseFetchError(`TWSE legacy fetch failed ${res.status}: ${text}`, res.status);
+    const init: RequestInit = { headers: TWSE_REQUEST_HEADERS, cache: 'no-store' };
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    if (controller) {
+        timeout = setTimeout(() => controller.abort(), TWSE_REQUEST_TIMEOUT_MS);
+        init.signal = controller.signal;
     }
 
-    const payload = (await res.json()) as TwseLegacyDailyResponse;
-    if (!payload || payload.stat !== 'OK' || !Array.isArray(payload.data)) {
-        return [];
-    }
+    try {
+        const res = await fetch(url.toString(), init);
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new TwseFetchError(`TWSE legacy fetch failed ${res.status}: ${text}`, res.status);
+        }
 
-    const fields = Array.isArray(payload.fields) ? payload.fields : undefined;
-    const records: TwseDailyRecord[] = [];
-    for (const row of payload.data) {
-        const record = normalizeLegacyRecord(fields, row);
-        if (record) {
-            records.push(record);
+        const payload = (await res.json()) as TwseLegacyDailyResponse;
+        if (!payload || payload.stat !== 'OK' || !Array.isArray(payload.data)) {
+            return [];
+        }
+
+        const fields = Array.isArray(payload.fields) ? payload.fields : undefined;
+        const records: TwseDailyRecord[] = [];
+        for (const row of payload.data) {
+            const record = normalizeLegacyRecord(fields, row);
+            if (record) {
+                records.push(record);
+            }
+        }
+
+        return records;
+    } catch (error) {
+        if (error instanceof TwseFetchError) {
+            throw error;
+        }
+
+        if (isAbortError(error)) {
+            throw new TwseFetchError(`TWSE legacy fetch timeout after ${TWSE_REQUEST_TIMEOUT_MS}ms`, 408);
+        }
+
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        throw new TwseFetchError(`TWSE legacy fetch network error: ${message}`, 503);
+    } finally {
+        if (timeout) {
+            clearTimeout(timeout);
         }
     }
-
-    return records;
 };
 
 const fetchMonthlyDailyRecords = async (stockCode: string, dateParam: string) => {
@@ -194,6 +272,10 @@ const fetchMonthlyDailyRecords = async (stockCode: string, dateParam: string) =>
 
             if (error.status === 404 || error.status === 400) {
                 return [];
+            }
+
+            if (error.status === 408 || error.status === 503) {
+                throw error;
             }
         }
 
@@ -265,12 +347,15 @@ export const getTaiwanStockCandles = async (
         const monthsToFetch = 18;
         const collected: CandleDatum[] = [];
         let encounteredNetworkIssue = false;
+        let consecutiveNetworkFailures = 0;
+        const MAX_CONSECUTIVE_NETWORK_FAILURES = 1;
 
         for (let offset = 0; offset < monthsToFetch && collected.length < targetCount * 2; offset++) {
             const cursor = new Date(Date.UTC(toDate.getUTCFullYear(), toDate.getUTCMonth() - offset, 1));
             const dateParam = `${cursor.getUTCFullYear()}${String(cursor.getUTCMonth() + 1).padStart(2, '0')}01`;
             try {
                 const records = await fetchMonthlyDailyRecords(stockCode, dateParam);
+                consecutiveNetworkFailures = 0;
 
                 for (const record of records) {
                     const candle = toCandleDatum(record);
@@ -284,11 +369,13 @@ export const getTaiwanStockCandles = async (
                     }
 
                     if (error.status === 404 || error.status === 400) {
+                        consecutiveNetworkFailures = 0;
                         continue;
                     }
                 }
 
                 encounteredNetworkIssue = true;
+                consecutiveNetworkFailures += 1;
 
                 if (process.env.NODE_ENV !== 'production') {
                     console.warn('fetchMonthlyDailyRecords error:', {
@@ -296,6 +383,10 @@ export const getTaiwanStockCandles = async (
                         dateParam,
                         error,
                     });
+                }
+
+                if (consecutiveNetworkFailures >= MAX_CONSECUTIVE_NETWORK_FAILURES) {
+                    break;
                 }
             }
         }
@@ -341,6 +432,9 @@ const fetchRealtimeSnapshot = async () => {
         const data = await fetchTwseJSON<TwseRealtimeResponse>('stock/twt48u', { revalidate: 30 });
         return Array.isArray(data) ? data : [];
     } catch (error) {
+        if (error instanceof TwseFetchError) {
+            throw error;
+        }
         console.error('fetchRealtimeSnapshot error:', error);
         return [];
     }
@@ -471,6 +565,9 @@ const fetchRealtimeBySymbol = async (stockCode: string): Promise<TwseRealtimeAny
 
         return (record as TwseRealtimeAnyRecord | undefined) ?? null;
     } catch (error) {
+        if (error instanceof TwseFetchError) {
+            throw error;
+        }
         console.error('fetchRealtimeBySymbol error:', error);
         return null;
     }
@@ -590,16 +687,41 @@ export const getTaiwanRealtimeQuote = async (symbol: string): Promise<QuoteData 
         return null;
     }
 
-    const records = await fetchRealtimeSnapshot();
-    let quote = toQuoteDataFromRealtimeRecord(records.find((entry) => entry.Code === stockCode));
+    let quote: QuoteData | null = null;
 
-    if (!hasCompleteSnapshot(quote)) {
+    try {
+        const records = await fetchRealtimeSnapshot();
+        quote = toQuoteDataFromRealtimeRecord(records.find((entry) => entry.Code === stockCode));
+        if (hasCompleteSnapshot(quote)) {
+            return quote;
+        }
+    } catch (error) {
+        if (error instanceof TwseFetchError) {
+            if (process.env.NODE_ENV !== 'production') {
+                console.warn('fetchRealtimeSnapshot TwseFetchError:', { stockCode, error });
+            }
+            return null;
+        }
+        console.error('fetchRealtimeSnapshot unexpected error:', error);
+        return null;
+    }
+
+    try {
         const fallbackRecord = await fetchRealtimeBySymbol(stockCode);
         const fallbackQuote = toQuoteDataFromRealtimeRecord(fallbackRecord);
         if (hasCompleteSnapshot(fallbackQuote)) {
+            return fallbackQuote;
+        }
+        if (!quote) {
             quote = fallbackQuote;
-        } else if (!quote) {
-            quote = fallbackQuote;
+        }
+    } catch (error) {
+        if (error instanceof TwseFetchError) {
+            if (process.env.NODE_ENV !== 'production') {
+                console.warn('fetchRealtimeBySymbol TwseFetchError:', { stockCode, error });
+            }
+        } else {
+            console.error('fetchRealtimeBySymbol unexpected error:', error);
         }
     }
 
@@ -682,16 +804,20 @@ export const getTaiwanCompanyProfile = async (symbol: string): Promise<ProfileDa
 };
 
 export const getTaiwanSnapshotBundle = async (symbol: string) => {
-    const [profile, quote, candles] = await Promise.all([
-        getTaiwanCompanyProfile(symbol),
-        getTaiwanRealtimeQuote(symbol),
-        getTaiwanStockCandles(symbol, { count: 240 }),
+    const [profile, quote, candleResult] = await Promise.all([
+        withTimeoutFallback(getTaiwanCompanyProfile(symbol), null, TWSE_SNAPSHOT_TIMEOUT_MS),
+        withTimeoutFallback(getTaiwanRealtimeQuote(symbol), null, TWSE_SNAPSHOT_TIMEOUT_MS),
+        withTimeoutFallback(
+            getTaiwanStockCandles(symbol, { count: 240 }),
+            { candles: [], reason: 'network-error' },
+            TWSE_SNAPSHOT_TIMEOUT_MS,
+        ),
     ]);
 
     return {
         profile,
         quote,
-        candles: candles.candles,
-        candleIssue: candles.reason,
+        candles: candleResult.candles,
+        candleIssue: candleResult.reason,
     };
 };
