@@ -419,16 +419,35 @@ type TwseDailyRecord = {
 
 type TwseDailyResponse = TwseDailyRecord[];
 
+const PLACEHOLDER_PATTERN = /^(?:[-–—﹣－─‒―]+|N\/?A|na|x|\u00d7|休市|暫停|除權息)$/i;
+
+const toHalfWidth = (input: string): string =>
+    input
+        .replace(/[！-～]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+        .replace(/　/g, ' ');
+
 const parseTwseNumber = (value?: string | number | null): number | undefined => {
     if (value === undefined || value === null) return undefined;
     if (typeof value === 'number') {
         return Number.isFinite(value) ? value : undefined;
     }
 
-    const sanitized = value.replace(/,/g, '').replace(/--/g, '').trim();
-    if (!sanitized) return undefined;
+    const normalized = toHalfWidth(value.replace(/,/g, '').trim());
+    if (!normalized) return undefined;
+    if (PLACEHOLDER_PATTERN.test(normalized)) {
+        return undefined;
+    }
 
-    const parsed = Number.parseFloat(sanitized);
+    if (!/[0-9]/.test(normalized)) {
+        return undefined;
+    }
+
+    const numericCandidate = normalized.replace(/[^\d+\-\.eE]/g, '');
+    if (!numericCandidate) {
+        return undefined;
+    }
+
+    const parsed = Number.parseFloat(numericCandidate);
     return Number.isFinite(parsed) ? parsed : undefined;
 };
 
