@@ -33,3 +33,7 @@
 - Description: 將台股即時報價改用 Fugle Realtime API，並保留證交所資料作為備援，同步補充環境變數與文件說明。
 - Date: 2025-02-22
 
+- Version Code: `LBT-20250223-02`
+- Description: 以日 K 蠟燭資料補齊台股即時報價缺漏的開高低收與昨收欄位，避免介面只顯示破折號。
+- Date: 2025-02-23
+

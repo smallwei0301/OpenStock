@@ -1061,6 +1061,65 @@ const mergeQuoteData = (...quotes: (QuoteData | null | undefined)[]): QuoteData 
     return hasCoreValue ? (merged as QuoteData) : null;
 };
 
+const createQuoteFromCandles = (candles: CandleDatum[] | null | undefined): QuoteData | null => {
+    if (!Array.isArray(candles) || candles.length === 0) {
+        return null;
+    }
+
+    const validCandles = candles
+        .filter((candle) =>
+            candle &&
+            Number.isFinite(candle.time) &&
+            Number.isFinite(candle.open) &&
+            Number.isFinite(candle.high) &&
+            Number.isFinite(candle.low) &&
+            Number.isFinite(candle.close),
+        )
+        .sort((a, b) => a.time - b.time);
+
+    if (validCandles.length === 0) {
+        return null;
+    }
+
+    const latest = validCandles[validCandles.length - 1];
+    const previous = [...validCandles]
+        .slice(0, -1)
+        .reverse()
+        .find((entry) => Number.isFinite(entry.close));
+
+    const fallback: QuoteData = {
+        c: latest.close,
+        o: latest.open,
+        h: latest.high,
+        l: latest.low,
+        pc: previous?.close ?? latest.close,
+        t: latest.time,
+    };
+
+    if (
+        fallback.dp === undefined &&
+        fallback.c !== undefined &&
+        Number.isFinite(fallback.c) &&
+        fallback.pc !== undefined &&
+        Number.isFinite(fallback.pc) &&
+        fallback.pc !== 0
+    ) {
+        fallback.dp = ((fallback.c - fallback.pc) / fallback.pc) * 100;
+    }
+
+    return fallback;
+};
+
+const enrichQuoteWithCandles = (quote: QuoteData | null, candles: CandleDatum[] | null | undefined): QuoteData | null => {
+    const candleQuote = createQuoteFromCandles(candles);
+    if (!candleQuote) {
+        return quote;
+    }
+
+    const merged = mergeQuoteData(quote, candleQuote);
+    return merged ?? quote ?? candleQuote;
+};
+
 export const getTaiwanRealtimeQuote = async (symbol: string): Promise<QuoteData | null> => {
     const stockCode = extractTaiwanStockCode(symbol);
     if (!stockCode) {
@@ -1217,7 +1276,7 @@ export const getTaiwanSnapshotBundle = async (symbol: string) => {
 
     return {
         profile,
-        quote,
+        quote: enrichQuoteWithCandles(quote, candleResult.candles),
         candles: candleResult.candles,
         candleIssue: candleResult.reason,
     };
