@@ -273,10 +273,6 @@ const fetchMonthlyDailyRecords = async (stockCode: string, dateParam: string) =>
             if (error.status === 404 || error.status === 400) {
                 return [];
             }
-
-            if (error.status === 408 || error.status === 503) {
-                throw error;
-            }
         }
 
         try {
