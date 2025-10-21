@@ -102,6 +102,9 @@ const TRADINGVIEW_SCAN_COLUMNS = [
     'change',
     'change_abs',
     'change_percent',
+    'lp_time',
+    'timestamp',
+    'time',
 ] as const;
 
 const TRADINGVIEW_SCAN_COLUMN_INDEX: Record<(typeof TRADINGVIEW_SCAN_COLUMNS)[number], number> =
@@ -275,15 +278,22 @@ const TRADINGVIEW_TIMESTAMP_KEYS = [
     'time',
     'timestamp',
     'updated',
+    'updatedAt',
+    'updated_at',
+    'updateTime',
     'update_time',
     'last_update_time',
     'lastUpdated',
     'last_updated',
     'lastTradeTime',
+    'last_trade_time',
     'tradeTime',
     'trade_time',
     'lasttime',
     'lastTimestamp',
+    'last_timestamp',
+    'lastQuoteTime',
+    'last_quote_time',
     't',
 ] as const;
 
@@ -353,9 +363,13 @@ const extractQuoteFromTradingViewRecord = (
         }
     }
 
-    if (close === undefined && open === undefined && high === undefined && low === undefined) {
+    const hasPriceCore = [close, open, high, low, previousClose].some((value) => value !== undefined);
+
+    if (!hasPriceCore) {
         return null;
     }
+
+    const resolvedTimestamp = timestamp ?? Math.floor(Date.now() / 1000);
 
     return {
         c: close,
@@ -364,7 +378,7 @@ const extractQuoteFromTradingViewRecord = (
         l: low,
         pc: previousClose,
         dp: percent,
-        t: timestamp,
+        t: resolvedTimestamp,
     } satisfies QuoteData;
 };
 
@@ -811,6 +825,10 @@ const fetchTradingViewQuoteFromScanner = async (stockCode: string): Promise<Quot
         const change = parseTradingViewNumber(getColumnValue('change'));
         const absoluteChange = parseTradingViewNumber(getColumnValue('change_abs'));
         let percent = parseTradingViewNumber(getColumnValue('change_percent'));
+        const timestampFromScan =
+            parseTradingViewTimestamp(getColumnValue('lp_time')) ??
+            parseTradingViewTimestamp(getColumnValue('timestamp')) ??
+            parseTradingViewTimestamp(getColumnValue('time'));
         let previousClose: number | undefined;
 
         if (close !== undefined && absoluteChange !== undefined) {
@@ -844,6 +862,9 @@ const fetchTradingViewQuoteFromScanner = async (stockCode: string): Promise<Quot
             return null;
         }
 
+        const resolvedTimestamp =
+            timestampFromScan !== undefined ? timestampFromScan : Math.floor(Date.now() / 1000);
+
         return {
             c: close,
             o: open,
@@ -851,7 +872,7 @@ const fetchTradingViewQuoteFromScanner = async (stockCode: string): Promise<Quot
             l: low,
             pc: previousClose,
             dp: percent,
-            t: Math.floor(Date.now() / 1000),
+            t: resolvedTimestamp,
         } satisfies QuoteData;
     } catch (error) {
         if (error instanceof TradingViewFetchError) {

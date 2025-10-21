@@ -49,3 +49,7 @@
 - Description: 台股即時報價改以 TradingView 爬蟲與 Scanner API 為主要來源，Fugle 與證交所資料改列為次、三層備援以恢復最新價格欄位。
 - Date: 2025-02-25
 
+- Version Code: `LBT-20250225-02`
+- Description: 強化 TradingView 爬蟲時間戳處理，優先採用掃描 API 的成交時間並於缺漏時以抓取時間補齊，確保台股即時報價的「最後更新」貼近實際拉取時點。
+- Date: 2025-02-25
+
