@@ -22,6 +22,17 @@ const FUGLE_REQUEST_HEADERS: Record<string, string> = {
     Accept: 'application/json',
 };
 
+const TRADINGVIEW_SYMBOL_BASE_URL = 'https://www.tradingview.com/symbols';
+const TRADINGVIEW_SCAN_URL = 'https://scanner.tradingview.com/taiwan/scan';
+const TRADINGVIEW_REQUEST_TIMEOUT_MS = 3000;
+const TRADINGVIEW_REQUEST_HEADERS: Record<string, string> = {
+    'User-Agent': 'Lazybacktest/1.0 (+https://lazybacktest.com)',
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
+    Origin: 'https://www.tradingview.com',
+    Referer: 'https://www.tradingview.com/',
+};
+
 class TwseFetchError extends Error {
     status?: number;
 
@@ -38,6 +49,16 @@ class FugleFetchError extends Error {
     constructor(message: string, status?: number) {
         super(message);
         this.name = 'FugleFetchError';
+        this.status = status;
+    }
+}
+
+class TradingViewFetchError extends Error {
+    status?: number;
+
+    constructor(message: string, status?: number) {
+        super(message);
+        this.name = 'TradingViewFetchError';
         this.status = status;
     }
 }
@@ -70,6 +91,322 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined => {
         return undefined;
     }
     return value as Record<string, unknown>;
+};
+
+const TRADINGVIEW_SCAN_COLUMNS = [
+    'close',
+    'open',
+    'high',
+    'low',
+    'volume',
+    'change',
+    'change_abs',
+    'change_percent',
+] as const;
+
+const TRADINGVIEW_SCAN_COLUMN_INDEX: Record<(typeof TRADINGVIEW_SCAN_COLUMNS)[number], number> =
+    TRADINGVIEW_SCAN_COLUMNS.reduce(
+        (acc, column, index) => {
+            acc[column] = index;
+            return acc;
+        },
+        {} as Record<(typeof TRADINGVIEW_SCAN_COLUMNS)[number], number>,
+    );
+
+const parseTradingViewNumber = (value: unknown): number | undefined => {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : undefined;
+    }
+    if (typeof value === 'string') {
+        const sanitized = value.replace(/,/g, '').trim();
+        if (!sanitized) {
+            return undefined;
+        }
+        const parsed = Number.parseFloat(sanitized);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
+};
+
+const parseTradingViewTimestamp = (value: unknown): number | undefined => {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value === 'number') {
+        const seconds = value > 10_000_000_000 ? Math.floor(value / 1000) : Math.floor(value);
+        return Number.isFinite(seconds) ? seconds : undefined;
+    }
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return undefined;
+        const numeric = Number.parseFloat(trimmed);
+        if (Number.isFinite(numeric)) {
+            const seconds = numeric > 10_000_000_000 ? Math.floor(numeric / 1000) : Math.floor(numeric);
+            return Number.isFinite(seconds) ? seconds : undefined;
+        }
+        const normalized = trimmed.replace(/\//g, '-');
+        const millis = Date.parse(/\d{4}-\d{2}-\d{2}T/.test(normalized) ? normalized : `${normalized} GMT+08:00`);
+        if (!Number.isNaN(millis)) {
+            return Math.floor(millis / 1000);
+        }
+    }
+    return undefined;
+};
+
+const normalizeTradingViewSymbol = (value: string): string =>
+    value
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '')
+        .replace(/－|﹣|–|—/g, '-')
+        .replace(/::+/g, ':');
+
+const buildTradingViewSymbolVariants = (stockCode: string): Set<string> => {
+    const normalizedCode = stockCode.trim().toUpperCase();
+    return new Set([
+        `TWSE:${normalizedCode}`,
+        `TWSE-${normalizedCode}`,
+        `TWSE.${normalizedCode}`,
+        `${normalizedCode}.TW`,
+        `${normalizedCode}-TW`,
+        `${normalizedCode}`,
+    ]);
+};
+
+const TRADINGVIEW_SYMBOL_KEYS = [
+    'symbol',
+    'symbolId',
+    'symbol_id',
+    'symbolName',
+    'symbol_name',
+    'symbolFull',
+    'symbol_full',
+    'ticker',
+    'tickerId',
+    'ticker_id',
+    'shortName',
+    'short_name',
+    'name',
+    'code',
+    'proName',
+    'pro_name',
+    'id',
+] as const;
+
+const pickTradingViewNumberFromSources = (
+    sources: (Record<string, unknown> | undefined)[],
+    keys: readonly string[],
+): number | undefined => {
+    for (const source of sources) {
+        if (!source) continue;
+        for (const key of keys) {
+            const parsed = parseTradingViewNumber(source[key]);
+            if (parsed !== undefined) {
+                return parsed;
+            }
+        }
+    }
+    return undefined;
+};
+
+const pickTradingViewTimestampFromSources = (
+    sources: (Record<string, unknown> | undefined)[],
+    keys: readonly string[],
+): number | undefined => {
+    for (const source of sources) {
+        if (!source) continue;
+        for (const key of keys) {
+            const parsed = parseTradingViewTimestamp(source[key]);
+            if (parsed !== undefined) {
+                return parsed;
+            }
+        }
+    }
+    return undefined;
+};
+
+const TRADINGVIEW_CLOSE_KEYS = [
+    'lp',
+    'lastPrice',
+    'last_price',
+    'last',
+    'close',
+    'closePrice',
+    'close_price',
+    'price',
+    'value',
+    'c',
+] as const;
+
+const TRADINGVIEW_OPEN_KEYS = ['open', 'openPrice', 'open_price', 'o'] as const;
+const TRADINGVIEW_HIGH_KEYS = ['high', 'highPrice', 'high_price', 'h'] as const;
+const TRADINGVIEW_LOW_KEYS = ['low', 'lowPrice', 'low_price', 'l'] as const;
+const TRADINGVIEW_PREV_CLOSE_KEYS = [
+    'prev',
+    'prevClose',
+    'prev_close',
+    'previousClose',
+    'previous_close',
+    'pc',
+    'reference',
+    'referencePrice',
+    'ref',
+    'yesterdayClose',
+    'yesterday_close',
+] as const;
+const TRADINGVIEW_CHANGE_KEYS = [
+    'change',
+    'change_abs',
+    'ch',
+    'diff',
+    'delta',
+    'last_change',
+    'price_change',
+] as const;
+const TRADINGVIEW_PERCENT_KEYS = [
+    'change_percent',
+    'chp',
+    'percent',
+    'last_change_percent',
+    'changeRate',
+    'change_rate',
+] as const;
+const TRADINGVIEW_TIMESTAMP_KEYS = [
+    'lp_time',
+    'time',
+    'timestamp',
+    'updated',
+    'update_time',
+    'last_update_time',
+    'lastUpdated',
+    'last_updated',
+    'lastTradeTime',
+    'tradeTime',
+    'trade_time',
+    'lasttime',
+    'lastTimestamp',
+    't',
+] as const;
+
+const gatherTradingViewSources = (record: Record<string, unknown>): Record<string, unknown>[] => {
+    const sources: Record<string, unknown>[] = [record];
+    for (const value of Object.values(record)) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+        sources.push(value as Record<string, unknown>);
+    }
+    return sources;
+};
+
+const extractQuoteFromTradingViewRecord = (
+    record: Record<string, unknown>,
+    targetSymbols: Set<string>,
+): QuoteData | null => {
+    const symbolValues: string[] = [];
+    for (const key of TRADINGVIEW_SYMBOL_KEYS) {
+        const value = record[key];
+        if (typeof value === 'string' && value.trim()) {
+            symbolValues.push(value);
+        }
+    }
+
+    if (
+        symbolValues.length === 0 ||
+        !symbolValues.some((raw) => {
+            const normalized = normalizeTradingViewSymbol(raw);
+            return targetSymbols.has(normalized) || targetSymbols.has(normalized.replace(/-/g, ':'));
+        })
+    ) {
+        return null;
+    }
+
+    const sources = gatherTradingViewSources(record);
+    const close = pickTradingViewNumberFromSources(sources, TRADINGVIEW_CLOSE_KEYS);
+    const open = pickTradingViewNumberFromSources(sources, TRADINGVIEW_OPEN_KEYS);
+    const high = pickTradingViewNumberFromSources(sources, TRADINGVIEW_HIGH_KEYS);
+    const low = pickTradingViewNumberFromSources(sources, TRADINGVIEW_LOW_KEYS);
+    let previousClose = pickTradingViewNumberFromSources(sources, TRADINGVIEW_PREV_CLOSE_KEYS);
+    const change = pickTradingViewNumberFromSources(sources, TRADINGVIEW_CHANGE_KEYS);
+    let percent = pickTradingViewNumberFromSources(sources, TRADINGVIEW_PERCENT_KEYS);
+    const timestamp = pickTradingViewTimestampFromSources(sources, TRADINGVIEW_TIMESTAMP_KEYS);
+
+    if (previousClose === undefined && change !== undefined && close !== undefined) {
+        previousClose = close - change;
+    }
+
+    if (
+        percent === undefined &&
+        change !== undefined &&
+        previousClose !== undefined &&
+        previousClose !== 0
+    ) {
+        percent = (change / previousClose) * 100;
+    }
+
+    if (
+        previousClose === undefined &&
+        close !== undefined &&
+        percent !== undefined &&
+        percent > -100
+    ) {
+        const denominator = 1 + percent / 100;
+        if (denominator !== 0) {
+            previousClose = close / denominator;
+        }
+    }
+
+    if (close === undefined && open === undefined && high === undefined && low === undefined) {
+        return null;
+    }
+
+    return {
+        c: close,
+        o: open,
+        h: high,
+        l: low,
+        pc: previousClose,
+        dp: percent,
+        t: timestamp,
+    } satisfies QuoteData;
+};
+
+const extractQuoteFromTradingViewState = (state: unknown, stockCode: string): QuoteData | null => {
+    if (!state || typeof state !== 'object') {
+        return null;
+    }
+
+    const targetSymbols = buildTradingViewSymbolVariants(stockCode);
+    const visited = new Set<object>();
+    const queue: unknown[] = [state];
+
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current || typeof current !== 'object') {
+            continue;
+        }
+
+        if (visited.has(current as object)) {
+            continue;
+        }
+        visited.add(current as object);
+
+        if (Array.isArray(current)) {
+            for (const value of current) {
+                queue.push(value);
+            }
+            continue;
+        }
+
+        const record = current as Record<string, unknown>;
+        const quote = extractQuoteFromTradingViewRecord(record, targetSymbols);
+        if (quote) {
+            return quote;
+        }
+
+        for (const value of Object.values(record)) {
+            queue.push(value);
+        }
+    }
+
+    return null;
 };
 
 const parseFugleNumber = (value: unknown): number | undefined => {
@@ -411,6 +748,229 @@ const fetchTwseJSON = async <T>(path: string, options: FetchOptions = {}): Promi
         if (timeout) {
             clearTimeout(timeout);
         }
+    }
+};
+
+type TradingViewScanResponse = {
+    data?: { s?: string; d?: unknown[] }[];
+};
+
+const fetchTradingViewQuoteFromScanner = async (stockCode: string): Promise<QuoteData | null> => {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
+    const symbol = `TWSE:${stockCode.toUpperCase()}`;
+
+    const init: RequestInit = {
+        method: 'POST',
+        headers: {
+            ...TRADINGVIEW_REQUEST_HEADERS,
+            'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+        body: JSON.stringify({
+            symbols: { tickers: [symbol], query: { types: [] } },
+            columns: TRADINGVIEW_SCAN_COLUMNS,
+        }),
+    };
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    if (controller) {
+        timeout = setTimeout(() => controller.abort(), TRADINGVIEW_REQUEST_TIMEOUT_MS);
+        init.signal = controller.signal;
+    }
+
+    try {
+        const res = await fetch(TRADINGVIEW_SCAN_URL, init);
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new TradingViewFetchError(`TradingView scan failed ${res.status}: ${text}`, res.status);
+        }
+
+        const payload = (await res.json()) as TradingViewScanResponse;
+        if (!payload?.data || !Array.isArray(payload.data)) {
+            return null;
+        }
+
+        const entry = payload.data.find((item) => typeof item?.s === 'string' && item.s.toUpperCase() === symbol);
+        if (!entry || !Array.isArray(entry.d)) {
+            return null;
+        }
+
+        const values = entry.d;
+        const getColumnValue = (column: (typeof TRADINGVIEW_SCAN_COLUMNS)[number]) => {
+            const index = TRADINGVIEW_SCAN_COLUMN_INDEX[column];
+            if (index === undefined || index < 0 || index >= values.length) {
+                return undefined;
+            }
+            return values[index];
+        };
+
+        const close = parseTradingViewNumber(getColumnValue('close'));
+        const open = parseTradingViewNumber(getColumnValue('open'));
+        const high = parseTradingViewNumber(getColumnValue('high'));
+        const low = parseTradingViewNumber(getColumnValue('low'));
+        const change = parseTradingViewNumber(getColumnValue('change'));
+        const absoluteChange = parseTradingViewNumber(getColumnValue('change_abs'));
+        let percent = parseTradingViewNumber(getColumnValue('change_percent'));
+        let previousClose: number | undefined;
+
+        if (close !== undefined && absoluteChange !== undefined) {
+            previousClose = close - absoluteChange;
+        } else if (close !== undefined && change !== undefined) {
+            previousClose = close - change;
+        }
+
+        if (
+            percent === undefined &&
+            change !== undefined &&
+            previousClose !== undefined &&
+            previousClose !== 0
+        ) {
+            percent = (change / previousClose) * 100;
+        }
+
+        if (
+            previousClose === undefined &&
+            close !== undefined &&
+            percent !== undefined &&
+            percent > -100
+        ) {
+            const denominator = 1 + percent / 100;
+            if (denominator !== 0) {
+                previousClose = close / denominator;
+            }
+        }
+
+        if (close === undefined && open === undefined && high === undefined && low === undefined) {
+            return null;
+        }
+
+        return {
+            c: close,
+            o: open,
+            h: high,
+            l: low,
+            pc: previousClose,
+            dp: percent,
+            t: Math.floor(Date.now() / 1000),
+        } satisfies QuoteData;
+    } catch (error) {
+        if (error instanceof TradingViewFetchError) {
+            throw error;
+        }
+
+        if (isAbortError(error)) {
+            throw new TradingViewFetchError(
+                `TradingView scan timeout after ${TRADINGVIEW_REQUEST_TIMEOUT_MS}ms`,
+                408,
+            );
+        }
+
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        throw new TradingViewFetchError(`TradingView scan network error: ${message}`, 503);
+    } finally {
+        if (timeout) {
+            clearTimeout(timeout);
+        }
+    }
+};
+
+const extractTradingViewStateFromHtml = (html: string): unknown => {
+    const marker = 'window.__PRELOADED_STATE__=';
+    const startIndex = html.indexOf(marker);
+    if (startIndex === -1) {
+        return null;
+    }
+
+    const jsonStart = startIndex + marker.length;
+    const endIndex = html.indexOf('</script>', jsonStart);
+    if (endIndex === -1) {
+        return null;
+    }
+
+    let jsonText = html.slice(jsonStart, endIndex).trim();
+    if (jsonText.endsWith(';')) {
+        jsonText = jsonText.slice(0, -1);
+    }
+
+    try {
+        return JSON.parse(jsonText);
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'production') {
+            console.warn('Failed to parse TradingView preloaded state:', error);
+        }
+        return null;
+    }
+};
+
+const fetchTradingViewQuoteFromHtml = async (stockCode: string): Promise<QuoteData | null> => {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
+    const url = `${TRADINGVIEW_SYMBOL_BASE_URL}/TWSE-${stockCode}/`;
+    const init: RequestInit = {
+        headers: TRADINGVIEW_REQUEST_HEADERS,
+        cache: 'no-store',
+    };
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    if (controller) {
+        timeout = setTimeout(() => controller.abort(), TRADINGVIEW_REQUEST_TIMEOUT_MS);
+        init.signal = controller.signal;
+    }
+
+    try {
+        const res = await fetch(url, init);
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new TradingViewFetchError(`TradingView page fetch failed ${res.status}: ${text}`, res.status);
+        }
+
+        const html = await res.text();
+        const state = extractTradingViewStateFromHtml(html);
+        if (!state) {
+            return null;
+        }
+
+        return extractQuoteFromTradingViewState(state, stockCode);
+    } catch (error) {
+        if (error instanceof TradingViewFetchError) {
+            throw error;
+        }
+
+        if (isAbortError(error)) {
+            throw new TradingViewFetchError(
+                `TradingView page fetch timeout after ${TRADINGVIEW_REQUEST_TIMEOUT_MS}ms`,
+                408,
+            );
+        }
+
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        throw new TradingViewFetchError(`TradingView page fetch network error: ${message}`, 503);
+    } finally {
+        if (timeout) {
+            clearTimeout(timeout);
+        }
+    }
+};
+
+const fetchTradingViewQuote = async (stockCode: string): Promise<QuoteData | null> => {
+    try {
+        const scanQuote = await fetchTradingViewQuoteFromScanner(stockCode);
+        if (scanQuote) {
+            return scanQuote;
+        }
+    } catch (error) {
+        if (process.env.NODE_ENV !== 'production') {
+            console.warn('fetchTradingViewQuoteFromScanner error:', { stockCode, error });
+        }
+    }
+
+    try {
+        return await fetchTradingViewQuoteFromHtml(stockCode);
+    } catch (error) {
+        if (error instanceof TradingViewFetchError) {
+            throw error;
+        }
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        throw new TradingViewFetchError(`TradingView fetch failed: ${message}`);
     }
 };
 
@@ -1211,6 +1771,21 @@ export const getTaiwanRealtimeQuote = async (symbol: string): Promise<QuoteData 
         }
         return hasCompleteSnapshot(quote);
     };
+
+    try {
+        const tradingViewQuote = await fetchTradingViewQuote(stockCode);
+        if (incorporateQuote(tradingViewQuote)) {
+            return quote;
+        }
+    } catch (error) {
+        if (error instanceof TradingViewFetchError) {
+            if (process.env.NODE_ENV !== 'production') {
+                console.warn('fetchTradingViewQuote TradingViewFetchError:', { stockCode, error });
+            }
+        } else {
+            console.error('fetchTradingViewQuote unexpected error:', error);
+        }
+    }
 
     try {
         const fugleQuote = await fetchFugleRealtimeQuote(stockCode);

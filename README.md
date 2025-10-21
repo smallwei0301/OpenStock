@@ -369,14 +369,15 @@ public/assets/images/   # logos and screenshots
     - Set `FINNHUB_API_KEY` and `FINNHUB_BASE_URL` (default: https://finnhub.io/api/v1).
     - Free tiers may return delayed quotes; respect rate limits and terms.
 
-- Fugle
-    - 台股即時報價主要來源。
-    - 於環境變數設定 `fugle_api_key` 以啟用 Fugle Realtime API。
-    - 若 Fugle 暫時不可用，系統會退回證交所公開資料當作備援。
-
 - TradingView
-    - Embeddable widgets used for charts, heatmap, quotes, and timelines.
-    - External images from `i.ibb.co` are allowlisted in `next.config.ts`.
+    - 透過網站爬蟲與 Scanner API 取得台股即時報價，優先作為台股 Snapshot 的主要來源。
+    - 仍提供嵌入式圖表、熱力圖、行情快照與新聞元件等前端整合。
+    - External images from `i.ibb.co` are allowlisted in `next.config.ts`。
+
+- Fugle
+    - 作為台股即時報價的第二層備援來源。
+    - 於環境變數設定 `fugle_api_key` 以啟用 Fugle Realtime API。
+    - 若 TradingView 與 Fugle 同時不可用，系統會退回證交所公開資料當作最後備援。
 
 - Better Auth + MongoDB
     - Email/password with MongoDB adapter.

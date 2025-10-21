@@ -45,3 +45,7 @@
 - Description: 改善 Fugle 回應解析流程，優先採用成交價與交易時間並補齊多種欄位名稱，確保台股即時報價與最後更新時間維持最新狀態。
 - Date: 2025-02-24
 
+- Version Code: `LBT-20250225-01`
+- Description: 台股即時報價改以 TradingView 爬蟲與 Scanner API 為主要來源，Fugle 與證交所資料改列為次、三層備援以恢復最新價格欄位。
+- Date: 2025-02-25
+
