@@ -56,7 +56,9 @@ type FugleQuoteResponse = {
     data?: {
         quote?: {
             priceInformation?: Record<string, unknown>;
+            price?: Record<string, unknown>;
             change?: Record<string, unknown>;
+            [key: string]: unknown;
         } | null;
         meta?: Record<string, unknown> | null;
     } | null;
@@ -87,11 +89,32 @@ const pickFugleNumber = (source: Record<string, unknown> | undefined | null, key
     return undefined;
 };
 
-const parseFugleTimestamp = (meta: Record<string, unknown> | undefined | null): number | undefined => {
-    if (!meta) return undefined;
+const pickFugleNumberFromSources = (
+    sources: (Record<string, unknown> | undefined | null)[],
+    keys: string[],
+): number | undefined => {
+    for (const source of sources) {
+        const parsed = pickFugleNumber(source, keys);
+        if (parsed !== undefined) {
+            return parsed;
+        }
+    }
+    return undefined;
+};
+
+const parseFugleTimestamp = (
+    meta: Record<string, unknown> | undefined | null,
+    quote: Record<string, unknown> | undefined | null = undefined,
+): number | undefined => {
+    const metaRecord = (meta ?? {}) as Record<string, unknown>;
 
     const directCandidate =
-        meta.lastUpdatedAt ?? meta.lastUpdateAt ?? meta.lastUpdated ?? meta.lastUpdateTime ?? meta.lastUpdatedTime ?? null;
+        metaRecord.lastUpdatedAt ??
+        metaRecord.lastUpdateAt ??
+        metaRecord.lastUpdated ??
+        metaRecord.lastUpdateTime ??
+        metaRecord.lastUpdatedTime ??
+        null;
 
     const resolveFromValue = (value: unknown): number | undefined => {
         if (value === undefined || value === null) return undefined;
@@ -118,23 +141,63 @@ const parseFugleTimestamp = (meta: Record<string, unknown> | undefined | null): 
         return resolvedDirect;
     }
 
-    const dateValue = meta.date;
-    const timeValue = meta.time ?? meta.lastTradeTime ?? meta.lastUpdatedTime;
-    if (typeof dateValue === 'string') {
-        const sanitizedDate = dateValue.replace(/\//g, '-');
-        if (typeof timeValue === 'string' && timeValue.trim()) {
-            const candidate = `${sanitizedDate}T${timeValue.trim()}`;
-            const hasTimezone = /[zZ]|[+\-]\d{2}:?\d{2}$/.test(candidate);
-            const millis = Date.parse(hasTimezone ? candidate : `${candidate} GMT+08:00`);
-            if (!Number.isNaN(millis)) {
-                return Math.floor(millis / 1000);
-            }
-        } else {
-            const millis = Date.parse(`${sanitizedDate}T15:00:00 GMT+08:00`);
-            if (!Number.isNaN(millis)) {
-                return Math.floor(millis / 1000);
-            }
+    const additionalCandidates: unknown[] = [];
+    if (metaRecord.timestamp !== undefined) additionalCandidates.push(metaRecord.timestamp);
+    if (metaRecord.t !== undefined) additionalCandidates.push(metaRecord.t);
+    if (quote) {
+        additionalCandidates.push(
+            quote.lastUpdatedAt,
+            quote.lastUpdateAt,
+            quote.lastUpdated,
+            quote.lastUpdatedTime,
+            quote.lastUpdateTime,
+            quote.timestamp,
+            quote.t,
+        );
+    }
+
+    for (const candidate of additionalCandidates) {
+        const resolved = resolveFromValue(candidate);
+        if (resolved !== undefined) {
+            return resolved;
         }
+    }
+
+    const resolveFromDateParts = (dateValue: unknown, timeValue: unknown): number | undefined => {
+        if (typeof dateValue !== 'string') {
+            return undefined;
+        }
+
+        const sanitizedDate = dateValue.replace(/\//g, '-').trim();
+        if (!sanitizedDate) {
+            return undefined;
+        }
+
+        const timeString = typeof timeValue === 'string' && timeValue.trim() ? timeValue.trim() : '15:00:00';
+        const candidate = `${sanitizedDate}T${timeString}`;
+        const hasTimezone = /[zZ]|[+\-]\d{2}:?\d{2}$/.test(candidate);
+        const millis = Date.parse(hasTimezone ? candidate : `${candidate} GMT+08:00`);
+        if (!Number.isNaN(millis)) {
+            return Math.floor(millis / 1000);
+        }
+        return undefined;
+    };
+
+    const dateValue =
+        metaRecord.date ?? quote?.date ?? quote?.Date ?? quote?.tradeDate ?? quote?.TradeDate ?? quote?.lastTradeDate ?? quote?.day;
+    const timeValue =
+        metaRecord.time ??
+        metaRecord.lastTradeTime ??
+        metaRecord.lastUpdatedTime ??
+        quote?.time ??
+        quote?.Time ??
+        quote?.tradeTime ??
+        quote?.TradeTime ??
+        quote?.lastTradeTime ??
+        quote?.updatedTime;
+    const resolvedFromParts = resolveFromDateParts(dateValue, timeValue);
+    if (resolvedFromParts !== undefined) {
+        return resolvedFromParts;
     }
 
     return undefined;
@@ -145,23 +208,53 @@ const toQuoteDataFromFugle = (payload: FugleQuoteResponse | null | undefined): Q
         return null;
     }
 
-    const priceInfo = payload.data.quote.priceInformation ?? undefined;
-    const changeInfo = payload.data.quote.change ?? undefined;
+    const rawQuote = payload.data.quote as
+        | (Record<string, unknown> & {
+              priceInformation?: Record<string, unknown> | null;
+              price?: Record<string, unknown> | null;
+              change?: Record<string, unknown> | null;
+          })
+        | null
+        | undefined;
 
-    const close = pickFugleNumber(priceInfo, [
+    const priceInfo = rawQuote?.priceInformation ?? undefined;
+    const priceBlock = rawQuote?.price ?? undefined;
+    const changeInfo = rawQuote?.change ?? undefined;
+
+    const priceSources = [priceInfo, priceBlock, rawQuote];
+    const changeSources = [changeInfo, priceInfo, priceBlock, rawQuote];
+
+    const close = pickFugleNumberFromSources(priceSources, [
         'lastTradedPrice',
         'lastPrice',
         'price',
         'closePrice',
         'closingPrice',
         'latestPrice',
+        'tradePrice',
+        'Close',
     ]);
-    const open = pickFugleNumber(priceInfo, ['openPrice', 'openingPrice']);
-    const high = pickFugleNumber(priceInfo, ['highPrice', 'highestPrice']);
-    const low = pickFugleNumber(priceInfo, ['lowPrice', 'lowestPrice']);
-    const previousClose = pickFugleNumber(priceInfo, ['referencePrice', 'previousClosePrice', 'yesterdayClosePrice']);
-    const change = pickFugleNumber(changeInfo, ['priceChange', 'changePrice', 'price']);
-    let percent = pickFugleNumber(changeInfo, ['percent', 'percentChange', 'changeRate', 'priceChangePercent']);
+    const open = pickFugleNumberFromSources(priceSources, ['openPrice', 'openingPrice', 'open']);
+    const high = pickFugleNumberFromSources(priceSources, ['highPrice', 'highestPrice', 'high']);
+    const low = pickFugleNumberFromSources(priceSources, ['lowPrice', 'lowestPrice', 'low']);
+    const previousClose = pickFugleNumberFromSources(priceSources, [
+        'referencePrice',
+        'reference',
+        'previousClosePrice',
+        'yesterdayClosePrice',
+        'prevClose',
+        'preClose',
+        'lastClosePrice',
+    ]);
+    const change = pickFugleNumberFromSources(changeSources, ['priceChange', 'changePrice', 'price', 'change', 'difference']);
+    let percent = pickFugleNumberFromSources(changeSources, [
+        'percent',
+        'percentChange',
+        'changeRate',
+        'priceChangePercent',
+        'changePercent',
+        'percentage',
+    ]);
 
     if (percent === undefined && change !== undefined && previousClose !== undefined && previousClose !== 0) {
         percent = (change / previousClose) * 100;
@@ -177,7 +270,7 @@ const toQuoteDataFromFugle = (payload: FugleQuoteResponse | null | undefined): Q
         return null;
     }
 
-    const timestamp = parseFugleTimestamp(payload.data?.meta) ?? Math.floor(Date.now() / 1000);
+    const timestamp = parseFugleTimestamp(payload.data?.meta, rawQuote ?? undefined) ?? Math.floor(Date.now() / 1000);
 
     return {
         c: close,
@@ -923,6 +1016,51 @@ const hasCompleteSnapshot = (quote: QuoteData | null) => {
     });
 };
 
+const mergeQuoteData = (...quotes: (QuoteData | null | undefined)[]): QuoteData | null => {
+    const merged: Partial<QuoteData> = {};
+    let hasCoreValue = false;
+    let latestTimestamp: number | undefined;
+
+    const assignIfMissing = (key: keyof QuoteData, value: number | undefined, trackCore = false) => {
+        if (value === undefined || !Number.isFinite(value)) {
+            return;
+        }
+        if (key === 't') {
+            latestTimestamp = latestTimestamp === undefined ? value : Math.max(latestTimestamp, value);
+            return;
+        }
+        if (merged[key] === undefined) {
+            merged[key] = value;
+            if (trackCore) {
+                hasCoreValue = true;
+            }
+        }
+    };
+
+    for (const quote of quotes) {
+        if (!quote) continue;
+        assignIfMissing('c', quote.c, true);
+        assignIfMissing('o', quote.o, true);
+        assignIfMissing('h', quote.h, true);
+        assignIfMissing('l', quote.l, true);
+        assignIfMissing('pc', quote.pc, true);
+        if (quote.dp !== undefined && Number.isFinite(quote.dp) && merged.dp === undefined) {
+            merged.dp = quote.dp;
+        }
+        assignIfMissing('t', quote.t);
+    }
+
+    if (latestTimestamp !== undefined) {
+        merged.t = latestTimestamp;
+    }
+
+    if (merged.dp === undefined && merged.c !== undefined && merged.pc !== undefined && merged.pc !== 0) {
+        merged.dp = ((merged.c - merged.pc) / merged.pc) * 100;
+    }
+
+    return hasCoreValue ? (merged as QuoteData) : null;
+};
+
 export const getTaiwanRealtimeQuote = async (symbol: string): Promise<QuoteData | null> => {
     const stockCode = extractTaiwanStockCode(symbol);
     if (!stockCode) {
@@ -931,13 +1069,19 @@ export const getTaiwanRealtimeQuote = async (symbol: string): Promise<QuoteData 
 
     let quote: QuoteData | null = null;
 
+    const incorporateQuote = (candidate: QuoteData | null) => {
+        if (!candidate) return false;
+        const merged = mergeQuoteData(candidate, quote);
+        if (merged) {
+            quote = merged;
+        }
+        return hasCompleteSnapshot(quote);
+    };
+
     try {
         const fugleQuote = await fetchFugleRealtimeQuote(stockCode);
-        if (hasCompleteSnapshot(fugleQuote)) {
-            return fugleQuote;
-        }
-        if (fugleQuote) {
-            quote = fugleQuote;
+        if (incorporateQuote(fugleQuote)) {
+            return quote;
         }
     } catch (error) {
         if (error instanceof FugleFetchError) {
@@ -952,31 +1096,25 @@ export const getTaiwanRealtimeQuote = async (symbol: string): Promise<QuoteData 
     try {
         const records = await fetchRealtimeSnapshot();
         const twseQuote = toQuoteDataFromRealtimeRecord(records.find((entry) => entry.Code === stockCode));
-        if (hasCompleteSnapshot(twseQuote)) {
-            return twseQuote;
-        }
-        if (!quote && twseQuote) {
-            quote = twseQuote;
+        if (incorporateQuote(twseQuote)) {
+            return quote;
         }
     } catch (error) {
         if (error instanceof TwseFetchError) {
             if (process.env.NODE_ENV !== 'production') {
                 console.warn('fetchRealtimeSnapshot TwseFetchError:', { stockCode, error });
             }
-            return null;
         }
-        console.error('fetchRealtimeSnapshot unexpected error:', error);
-        return null;
+        if (!(error instanceof TwseFetchError)) {
+            console.error('fetchRealtimeSnapshot unexpected error:', error);
+        }
     }
 
     try {
         const fallbackRecord = await fetchRealtimeBySymbol(stockCode);
         const fallbackQuote = toQuoteDataFromRealtimeRecord(fallbackRecord);
-        if (hasCompleteSnapshot(fallbackQuote)) {
-            return fallbackQuote;
-        }
-        if (!quote && fallbackQuote) {
-            quote = fallbackQuote;
+        if (incorporateQuote(fallbackQuote)) {
+            return quote;
         }
     } catch (error) {
         if (error instanceof TwseFetchError) {
