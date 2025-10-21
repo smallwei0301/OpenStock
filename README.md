@@ -245,6 +245,7 @@ Netlify can build the project without extra tweaks thanks to the included `netli
       | `FINNHUB_API_KEY` | Server-side Finnhub market data key. |
       | `NEXT_PUBLIC_FINNHUB_API_KEY` | Optional browser-exposed Finnhub key if client requests need it. |
       | `FINNHUB_BASE_URL` | Default `https://finnhub.io/api/v1`; override only if you proxy requests. |
+      | `fugle_api_key` | Fugle 台股即時行情 API 金鑰（伺服器端使用）。 |
       | `GEMINI_API_KEY` | (Optional) Enables AI-powered emails triggered through Inngest. |
       | `NODEMAILER_EMAIL` / `NODEMAILER_PASSWORD` | SMTP credentials for transactional email delivery. |
 4. **Trigger the first deploy**
@@ -277,6 +278,9 @@ FINNHUB_API_KEY=your_finnhub_key
 NEXT_PUBLIC_FINNHUB_API_KEY=
 FINNHUB_BASE_URL=https://finnhub.io/api/v1
 
+# Fugle
+fugle_api_key=your_fugle_key
+
 # Inngest AI (Gemini)
 GEMINI_API_KEY=your_gemini_api_key
 
@@ -301,6 +305,9 @@ BETTER_AUTH_URL=http://localhost:3000
 FINNHUB_API_KEY=your_finnhub_key
 NEXT_PUBLIC_FINNHUB_API_KEY=
 FINNHUB_BASE_URL=https://finnhub.io/api/v1
+
+# Fugle
+fugle_api_key=your_fugle_key
 
 # Inngest AI (Gemini)
 GEMINI_API_KEY=your_gemini_api_key
@@ -361,6 +368,11 @@ public/assets/images/   # logos and screenshots
     - Stock search, company profiles, and market news.
     - Set `FINNHUB_API_KEY` and `FINNHUB_BASE_URL` (default: https://finnhub.io/api/v1).
     - Free tiers may return delayed quotes; respect rate limits and terms.
+
+- Fugle
+    - 台股即時報價主要來源。
+    - 於環境變數設定 `fugle_api_key` 以啟用 Fugle Realtime API。
+    - 若 Fugle 暫時不可用，系統會退回證交所公開資料當作備援。
 
 - TradingView
     - Embeddable widgets used for charts, heatmap, quotes, and timelines.

@@ -29,3 +29,7 @@
 - Description: 將 Finnhub 設定檢查改寫為非同步 Server Action 並更新相關頁面呼叫方式，確保 Netlify 建置流程符合 Next.js 規範。
 - Date: 2025-02-22
 
+- Version Code: `LBT-20250222-03`
+- Description: 將台股即時報價改用 Fugle Realtime API，並保留證交所資料作為備援，同步補充環境變數與文件說明。
+- Date: 2025-02-22
+

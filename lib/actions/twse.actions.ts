@@ -15,12 +15,29 @@ const TWSE_REQUEST_HEADERS: Record<string, string> = {
     Referer: 'https://lazybacktest.com/',
 };
 
+const FUGLE_BASE_URL = 'https://api.fugle.tw/realtime/v0.3';
+const FUGLE_REQUEST_TIMEOUT_MS = 2500;
+const FUGLE_REQUEST_HEADERS: Record<string, string> = {
+    'User-Agent': 'Lazybacktest/1.0 (+https://lazybacktest.com)',
+    Accept: 'application/json',
+};
+
 class TwseFetchError extends Error {
     status?: number;
 
     constructor(message: string, status?: number) {
         super(message);
         this.name = 'TwseFetchError';
+        this.status = status;
+    }
+}
+
+class FugleFetchError extends Error {
+    status?: number;
+
+    constructor(message: string, status?: number) {
+        super(message);
+        this.name = 'FugleFetchError';
         this.status = status;
     }
 }
@@ -34,6 +51,144 @@ type FetchOptions = {
 
 const isAbortError = (error: unknown): boolean =>
     !!error && typeof error === 'object' && 'name' in error && (error as { name?: string }).name === 'AbortError';
+
+type FugleQuoteResponse = {
+    data?: {
+        quote?: {
+            priceInformation?: Record<string, unknown>;
+            change?: Record<string, unknown>;
+        } | null;
+        meta?: Record<string, unknown> | null;
+    } | null;
+};
+
+const parseFugleNumber = (value: unknown): number | undefined => {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : undefined;
+    }
+    if (typeof value === 'string') {
+        const sanitized = value.replace(/,/g, '').trim();
+        if (!sanitized) return undefined;
+        const parsed = Number.parseFloat(sanitized);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
+};
+
+const pickFugleNumber = (source: Record<string, unknown> | undefined | null, keys: string[]): number | undefined => {
+    if (!source) return undefined;
+    for (const key of keys) {
+        const parsed = parseFugleNumber(source[key]);
+        if (parsed !== undefined) {
+            return parsed;
+        }
+    }
+    return undefined;
+};
+
+const parseFugleTimestamp = (meta: Record<string, unknown> | undefined | null): number | undefined => {
+    if (!meta) return undefined;
+
+    const directCandidate =
+        meta.lastUpdatedAt ?? meta.lastUpdateAt ?? meta.lastUpdated ?? meta.lastUpdateTime ?? meta.lastUpdatedTime ?? null;
+
+    const resolveFromValue = (value: unknown): number | undefined => {
+        if (value === undefined || value === null) return undefined;
+        if (typeof value === 'number') {
+            const millis = value > 10_000_000_000 ? value : value * 1000;
+            return Number.isFinite(millis) ? Math.floor(millis / 1000) : undefined;
+        }
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (!trimmed) return undefined;
+            const hasTimezone = /[zZ]|[+\-]\d{2}:?\d{2}$/.test(trimmed);
+            const normalized = trimmed.replace(/\//g, '-');
+            const candidate = hasTimezone ? normalized : `${normalized} GMT+08:00`;
+            const millis = Date.parse(candidate);
+            if (!Number.isNaN(millis)) {
+                return Math.floor(millis / 1000);
+            }
+        }
+        return undefined;
+    };
+
+    const resolvedDirect = resolveFromValue(directCandidate);
+    if (resolvedDirect !== undefined) {
+        return resolvedDirect;
+    }
+
+    const dateValue = meta.date;
+    const timeValue = meta.time ?? meta.lastTradeTime ?? meta.lastUpdatedTime;
+    if (typeof dateValue === 'string') {
+        const sanitizedDate = dateValue.replace(/\//g, '-');
+        if (typeof timeValue === 'string' && timeValue.trim()) {
+            const candidate = `${sanitizedDate}T${timeValue.trim()}`;
+            const hasTimezone = /[zZ]|[+\-]\d{2}:?\d{2}$/.test(candidate);
+            const millis = Date.parse(hasTimezone ? candidate : `${candidate} GMT+08:00`);
+            if (!Number.isNaN(millis)) {
+                return Math.floor(millis / 1000);
+            }
+        } else {
+            const millis = Date.parse(`${sanitizedDate}T15:00:00 GMT+08:00`);
+            if (!Number.isNaN(millis)) {
+                return Math.floor(millis / 1000);
+            }
+        }
+    }
+
+    return undefined;
+};
+
+const toQuoteDataFromFugle = (payload: FugleQuoteResponse | null | undefined): QuoteData | null => {
+    if (!payload?.data?.quote) {
+        return null;
+    }
+
+    const priceInfo = payload.data.quote.priceInformation ?? undefined;
+    const changeInfo = payload.data.quote.change ?? undefined;
+
+    const close = pickFugleNumber(priceInfo, [
+        'lastTradedPrice',
+        'lastPrice',
+        'price',
+        'closePrice',
+        'closingPrice',
+        'latestPrice',
+    ]);
+    const open = pickFugleNumber(priceInfo, ['openPrice', 'openingPrice']);
+    const high = pickFugleNumber(priceInfo, ['highPrice', 'highestPrice']);
+    const low = pickFugleNumber(priceInfo, ['lowPrice', 'lowestPrice']);
+    const previousClose = pickFugleNumber(priceInfo, ['referencePrice', 'previousClosePrice', 'yesterdayClosePrice']);
+    const change = pickFugleNumber(changeInfo, ['priceChange', 'changePrice', 'price']);
+    let percent = pickFugleNumber(changeInfo, ['percent', 'percentChange', 'changeRate', 'priceChangePercent']);
+
+    if (percent === undefined && change !== undefined && previousClose !== undefined && previousClose !== 0) {
+        percent = (change / previousClose) * 100;
+    }
+
+    if (
+        close === undefined &&
+        open === undefined &&
+        high === undefined &&
+        low === undefined &&
+        previousClose === undefined
+    ) {
+        return null;
+    }
+
+    const timestamp = parseFugleTimestamp(payload.data?.meta) ?? Math.floor(Date.now() / 1000);
+
+    return {
+        c: close,
+        o: open,
+        h: high,
+        l: low,
+        pc: previousClose,
+        dp: percent,
+        t: timestamp,
+    } satisfies QuoteData;
+};
 
 const withTimeoutFallback = async <T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> => {
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
@@ -103,6 +258,56 @@ const fetchTwseJSON = async <T>(path: string, options: FetchOptions = {}): Promi
 
         const message = error instanceof Error ? error.message : 'Unknown error';
         throw new TwseFetchError(`TWSE fetch network error: ${message}`, 503);
+    } finally {
+        if (timeout) {
+            clearTimeout(timeout);
+        }
+    }
+};
+
+const fetchFugleRealtimeQuote = async (stockCode: string): Promise<QuoteData | null> => {
+    const apiKey = process.env.fugle_api_key;
+    if (!apiKey) {
+        if (process.env.NODE_ENV !== 'production') {
+            console.warn('Fugle API key is not configured (fugle_api_key).');
+        }
+        return null;
+    }
+
+    const url = new URL(`${FUGLE_BASE_URL}/intraday/quote`);
+    url.searchParams.set('symbolId', stockCode);
+    url.searchParams.set('apiToken', apiKey);
+
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
+    const init: RequestInit = {
+        headers: FUGLE_REQUEST_HEADERS,
+        cache: 'no-store',
+    };
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    if (controller) {
+        timeout = setTimeout(() => controller.abort(), FUGLE_REQUEST_TIMEOUT_MS);
+        init.signal = controller.signal;
+    }
+
+    try {
+        const res = await fetch(url.toString(), init);
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new FugleFetchError(`Fugle fetch failed ${res.status}: ${text}`, res.status);
+        }
+
+        const payload = (await res.json()) as FugleQuoteResponse;
+        return toQuoteDataFromFugle(payload);
+    } catch (error) {
+        if (error instanceof FugleFetchError) {
+            throw error;
+        }
+        if (isAbortError(error)) {
+            throw new FugleFetchError(`Fugle fetch timeout after ${FUGLE_REQUEST_TIMEOUT_MS}ms`, 408);
+        }
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        throw new FugleFetchError(`Fugle fetch network error: ${message}`, 503);
     } finally {
         if (timeout) {
             clearTimeout(timeout);
@@ -727,10 +932,31 @@ export const getTaiwanRealtimeQuote = async (symbol: string): Promise<QuoteData 
     let quote: QuoteData | null = null;
 
     try {
+        const fugleQuote = await fetchFugleRealtimeQuote(stockCode);
+        if (hasCompleteSnapshot(fugleQuote)) {
+            return fugleQuote;
+        }
+        if (fugleQuote) {
+            quote = fugleQuote;
+        }
+    } catch (error) {
+        if (error instanceof FugleFetchError) {
+            if (process.env.NODE_ENV !== 'production') {
+                console.warn('fetchFugleRealtimeQuote FugleFetchError:', { stockCode, error });
+            }
+        } else {
+            console.error('fetchFugleRealtimeQuote unexpected error:', error);
+        }
+    }
+
+    try {
         const records = await fetchRealtimeSnapshot();
-        quote = toQuoteDataFromRealtimeRecord(records.find((entry) => entry.Code === stockCode));
-        if (hasCompleteSnapshot(quote)) {
-            return quote;
+        const twseQuote = toQuoteDataFromRealtimeRecord(records.find((entry) => entry.Code === stockCode));
+        if (hasCompleteSnapshot(twseQuote)) {
+            return twseQuote;
+        }
+        if (!quote && twseQuote) {
+            quote = twseQuote;
         }
     } catch (error) {
         if (error instanceof TwseFetchError) {
@@ -749,7 +975,7 @@ export const getTaiwanRealtimeQuote = async (symbol: string): Promise<QuoteData 
         if (hasCompleteSnapshot(fallbackQuote)) {
             return fallbackQuote;
         }
-        if (!quote) {
+        if (!quote && fallbackQuote) {
             quote = fallbackQuote;
         }
     } catch (error) {
