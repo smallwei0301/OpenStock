@@ -61,7 +61,15 @@ type FugleQuoteResponse = {
             [key: string]: unknown;
         } | null;
         meta?: Record<string, unknown> | null;
+        info?: Record<string, unknown> | null;
     } | null;
+};
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined => {
+    if (!value || typeof value !== 'object') {
+        return undefined;
+    }
+    return value as Record<string, unknown>;
 };
 
 const parseFugleNumber = (value: unknown): number | undefined => {
@@ -105,8 +113,12 @@ const pickFugleNumberFromSources = (
 const parseFugleTimestamp = (
     meta: Record<string, unknown> | undefined | null,
     quote: Record<string, unknown> | undefined | null = undefined,
+    info: Record<string, unknown> | undefined | null = undefined,
 ): number | undefined => {
-    const metaRecord = (meta ?? {}) as Record<string, unknown>;
+    const metaRecord = (asRecord(meta) ?? {}) as Record<string, unknown>;
+    const infoRecord = asRecord(info);
+    const quoteRecord = asRecord(quote);
+    const tradeRecord = asRecord(quoteRecord?.['trade']);
 
     const directCandidate =
         metaRecord.lastUpdatedAt ??
@@ -114,6 +126,11 @@ const parseFugleTimestamp = (
         metaRecord.lastUpdated ??
         metaRecord.lastUpdateTime ??
         metaRecord.lastUpdatedTime ??
+        infoRecord?.lastUpdatedAt ??
+        infoRecord?.lastUpdateAt ??
+        infoRecord?.lastUpdated ??
+        infoRecord?.lastUpdateTime ??
+        infoRecord?.lastUpdatedTime ??
         null;
 
     const resolveFromValue = (value: unknown): number | undefined => {
@@ -142,19 +159,28 @@ const parseFugleTimestamp = (
     }
 
     const additionalCandidates: unknown[] = [];
-    if (metaRecord.timestamp !== undefined) additionalCandidates.push(metaRecord.timestamp);
-    if (metaRecord.t !== undefined) additionalCandidates.push(metaRecord.t);
-    if (quote) {
-        additionalCandidates.push(
-            quote.lastUpdatedAt,
-            quote.lastUpdateAt,
-            quote.lastUpdated,
-            quote.lastUpdatedTime,
-            quote.lastUpdateTime,
-            quote.timestamp,
-            quote.t,
-        );
-    }
+    const pushCandidate = (value: unknown) => {
+        if (value !== undefined && value !== null) {
+            additionalCandidates.push(value);
+        }
+    };
+
+    [metaRecord.timestamp, metaRecord.t].forEach(pushCandidate);
+    const pushFields = (source: Record<string, unknown> | undefined, keys: string[]) => {
+        if (!source) return;
+        keys.forEach((key) => pushCandidate(source[key]));
+    };
+    pushFields(infoRecord, ['timestamp', 't', 'time', 'lastTradeTime', 'lastUpdatedTime']);
+    pushFields(quoteRecord, [
+        'lastUpdatedAt',
+        'lastUpdateAt',
+        'lastUpdated',
+        'lastUpdatedTime',
+        'lastUpdateTime',
+        'timestamp',
+        't',
+    ]);
+    pushFields(tradeRecord, ['timestamp', 't', 'time', 'at']);
 
     for (const candidate of additionalCandidates) {
         const resolved = resolveFromValue(candidate);
@@ -184,17 +210,32 @@ const parseFugleTimestamp = (
     };
 
     const dateValue =
-        metaRecord.date ?? quote?.date ?? quote?.Date ?? quote?.tradeDate ?? quote?.TradeDate ?? quote?.lastTradeDate ?? quote?.day;
+        metaRecord.date ??
+        infoRecord?.date ??
+        quoteRecord?.['date'] ??
+        quoteRecord?.['Date'] ??
+        quoteRecord?.['tradeDate'] ??
+        quoteRecord?.['TradeDate'] ??
+        quoteRecord?.['lastTradeDate'] ??
+        quoteRecord?.['day'] ??
+        tradeRecord?.['date'] ??
+        tradeRecord?.['tradeDate'];
     const timeValue =
         metaRecord.time ??
         metaRecord.lastTradeTime ??
         metaRecord.lastUpdatedTime ??
-        quote?.time ??
-        quote?.Time ??
-        quote?.tradeTime ??
-        quote?.TradeTime ??
-        quote?.lastTradeTime ??
-        quote?.updatedTime;
+        infoRecord?.['time'] ??
+        infoRecord?.['lastTradeTime'] ??
+        infoRecord?.['lastUpdatedTime'] ??
+        quoteRecord?.['time'] ??
+        quoteRecord?.['Time'] ??
+        quoteRecord?.['tradeTime'] ??
+        quoteRecord?.['TradeTime'] ??
+        quoteRecord?.['lastTradeTime'] ??
+        quoteRecord?.['updatedTime'] ??
+        tradeRecord?.['time'] ??
+        tradeRecord?.['t'] ??
+        tradeRecord?.['at'];
     const resolvedFromParts = resolveFromDateParts(dateValue, timeValue);
     if (resolvedFromParts !== undefined) {
         return resolvedFromParts;
@@ -213,30 +254,42 @@ const toQuoteDataFromFugle = (payload: FugleQuoteResponse | null | undefined): Q
               priceInformation?: Record<string, unknown> | null;
               price?: Record<string, unknown> | null;
               change?: Record<string, unknown> | null;
+              trade?: Record<string, unknown> | null;
+              trial?: Record<string, unknown> | null;
+              order?: Record<string, unknown> | null;
           })
         | null
         | undefined;
 
+    const infoBlock = payload.data.info ?? undefined;
     const priceInfo = rawQuote?.priceInformation ?? undefined;
     const priceBlock = rawQuote?.price ?? undefined;
     const changeInfo = rawQuote?.change ?? undefined;
+    const tradeInfo = rawQuote?.trade ?? undefined;
+    const trialInfo = rawQuote?.trial ?? undefined;
+    const orderInfo = rawQuote?.order ?? undefined;
 
-    const priceSources = [priceInfo, priceBlock, rawQuote];
-    const changeSources = [changeInfo, priceInfo, priceBlock, rawQuote];
+    const priceSources = [tradeInfo, priceInfo, priceBlock, rawQuote, trialInfo, orderInfo].map(asRecord);
+    const changeSources = [changeInfo, tradeInfo, priceInfo, priceBlock, rawQuote, trialInfo, orderInfo].map(asRecord);
 
     const close = pickFugleNumberFromSources(priceSources, [
         'lastTradedPrice',
         'lastPrice',
         'price',
+        'close',
         'closePrice',
         'closingPrice',
         'latestPrice',
         'tradePrice',
+        'currentPrice',
+        'last',
+        'ClosePrice',
+        'LatestPrice',
         'Close',
     ]);
-    const open = pickFugleNumberFromSources(priceSources, ['openPrice', 'openingPrice', 'open']);
-    const high = pickFugleNumberFromSources(priceSources, ['highPrice', 'highestPrice', 'high']);
-    const low = pickFugleNumberFromSources(priceSources, ['lowPrice', 'lowestPrice', 'low']);
+    const open = pickFugleNumberFromSources(priceSources, ['openPrice', 'openingPrice', 'open', 'Open', 'OpenPrice']);
+    const high = pickFugleNumberFromSources(priceSources, ['highPrice', 'highestPrice', 'high', 'High', 'HighPrice']);
+    const low = pickFugleNumberFromSources(priceSources, ['lowPrice', 'lowestPrice', 'low', 'Low', 'LowPrice']);
     const previousClose = pickFugleNumberFromSources(priceSources, [
         'referencePrice',
         'reference',
@@ -245,6 +298,7 @@ const toQuoteDataFromFugle = (payload: FugleQuoteResponse | null | undefined): Q
         'prevClose',
         'preClose',
         'lastClosePrice',
+        'Reference',
     ]);
     const change = pickFugleNumberFromSources(changeSources, ['priceChange', 'changePrice', 'price', 'change', 'difference']);
     let percent = pickFugleNumberFromSources(changeSources, [
@@ -270,7 +324,9 @@ const toQuoteDataFromFugle = (payload: FugleQuoteResponse | null | undefined): Q
         return null;
     }
 
-    const timestamp = parseFugleTimestamp(payload.data?.meta, rawQuote ?? undefined) ?? Math.floor(Date.now() / 1000);
+    const timestamp =
+        parseFugleTimestamp(payload.data?.meta, rawQuote ?? undefined, infoBlock ?? undefined) ??
+        Math.floor(Date.now() / 1000);
 
     return {
         c: close,
