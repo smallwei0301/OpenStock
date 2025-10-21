@@ -290,6 +290,11 @@ const fetchMonthlyDailyRecords = async (stockCode: string, dateParam: string) =>
     }
 };
 
+const MAX_MONTHS_TO_FETCH = 18;
+const MONTHLY_FETCH_BATCH_SIZE = 3;
+const CANDLE_BUFFER_RATIO = 1.25;
+const CANDLE_BUFFER_MIN_EXTRA = 60;
+
 const uniqueCandles = (candles: CandleDatum[]): CandleDatum[] => {
     const seen = new Set<number>();
     const result: CandleDatum[] = [];
@@ -342,40 +347,70 @@ export const getTaiwanStockCandles = async (
 
     try {
         const targetCount = Math.max(options.count ?? 240, 60);
+        const desiredCandleCount = Math.max(
+            Math.floor(targetCount * CANDLE_BUFFER_RATIO),
+            targetCount + CANDLE_BUFFER_MIN_EXTRA,
+        );
         const toTimestamp = options.to ?? Math.floor(Date.now() / 1000);
         const toDate = new Date(toTimestamp * 1000);
-        const monthsToFetch = 18;
         const collected: CandleDatum[] = [];
         let encounteredNetworkIssue = false;
         let consecutiveNetworkFailures = 0;
         const MAX_CONSECUTIVE_NETWORK_FAILURES = 1;
+        const monthParams: string[] = [];
 
-        for (let offset = 0; offset < monthsToFetch && collected.length < targetCount * 2; offset++) {
+        for (let offset = 0; offset < MAX_MONTHS_TO_FETCH; offset++) {
             const cursor = new Date(Date.UTC(toDate.getUTCFullYear(), toDate.getUTCMonth() - offset, 1));
             const dateParam = `${cursor.getUTCFullYear()}${String(cursor.getUTCMonth() + 1).padStart(2, '0')}01`;
-            try {
-                const records = await fetchMonthlyDailyRecords(stockCode, dateParam);
-                consecutiveNetworkFailures = 0;
+            monthParams.push(dateParam);
+        }
 
-                for (const record of records) {
-                    const candle = toCandleDatum(record);
-                    if (!candle) continue;
-                    collected.push(candle);
+        for (
+            let index = 0;
+            index < monthParams.length && collected.length < desiredCandleCount;
+            index += MONTHLY_FETCH_BATCH_SIZE
+        ) {
+            const batch = monthParams.slice(index, index + MONTHLY_FETCH_BATCH_SIZE);
+            const results = await Promise.allSettled(
+                batch.map((dateParam) => fetchMonthlyDailyRecords(stockCode, dateParam)),
+            );
+
+            let batchNetworkFailures = 0;
+            let batchRecordedSuccess = false;
+
+            for (let resultIndex = 0; resultIndex < results.length; resultIndex++) {
+                const outcome = results[resultIndex];
+                const dateParam = batch[resultIndex];
+
+                if (outcome.status === 'fulfilled') {
+                    const records = outcome.value;
+                    if (records.length > 0) {
+                        batchRecordedSuccess = true;
+                        consecutiveNetworkFailures = 0;
+
+                        for (const record of records) {
+                            const candle = toCandleDatum(record);
+                            if (!candle) continue;
+                            collected.push(candle);
+                        }
+                    }
+                    continue;
                 }
-            } catch (error) {
+
+                const error = outcome.reason;
+
                 if (error instanceof TwseFetchError) {
                     if (error.status === 429) {
                         return { candles: [], reason: 'rate-limit' };
                     }
 
                     if (error.status === 404 || error.status === 400) {
-                        consecutiveNetworkFailures = 0;
                         continue;
                     }
                 }
 
                 encounteredNetworkIssue = true;
-                consecutiveNetworkFailures += 1;
+                batchNetworkFailures += 1;
 
                 if (process.env.NODE_ENV !== 'production') {
                     console.warn('fetchMonthlyDailyRecords error:', {
@@ -384,10 +419,16 @@ export const getTaiwanStockCandles = async (
                         error,
                     });
                 }
+            }
 
-                if (consecutiveNetworkFailures >= MAX_CONSECUTIVE_NETWORK_FAILURES) {
-                    break;
-                }
+            if (batchNetworkFailures === batch.length) {
+                consecutiveNetworkFailures += 1;
+            } else if (batchRecordedSuccess) {
+                consecutiveNetworkFailures = 0;
+            }
+
+            if (consecutiveNetworkFailures >= MAX_CONSECUTIVE_NETWORK_FAILURES) {
+                break;
             }
         }
 
