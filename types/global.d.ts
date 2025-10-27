@@ -115,15 +115,50 @@ declare global {
     type QuoteData = {
         c?: number;
         dp?: number;
+        o?: number;
+        h?: number;
+        l?: number;
+        pc?: number;
+        t?: number;
     };
 
     type ProfileData = {
         name?: string;
+        ticker?: string;
+        exchange?: string;
         marketCapitalization?: number;
+        currency?: string;
+        ipo?: string;
+        country?: string;
+        finnhubIndustry?: string;
+        weburl?: string;
+        logo?: string;
     };
 
     type FinancialsData = {
         metric?: { [key: string]: number };
+    };
+
+    type CandleDatum = {
+        time: number;
+        open: number;
+        high: number;
+        low: number;
+        close: number;
+        volume?: number;
+    };
+
+    type CandleDataIssue =
+        | 'not-configured'
+        | 'invalid-symbol'
+        | 'no-data'
+        | 'rate-limit'
+        | 'network-error'
+        | 'permission-denied';
+
+    type StockCandlesResult = {
+        candles: CandleDatum[];
+        reason?: CandleDataIssue;
     };
 
     type SelectedStock = {

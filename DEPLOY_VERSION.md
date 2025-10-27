@@ -29,3 +29,27 @@
 - Description: 將 Finnhub 設定檢查改寫為非同步 Server Action 並更新相關頁面呼叫方式，確保 Netlify 建置流程符合 Next.js 規範。
 - Date: 2025-02-22
 
+- Version Code: `LBT-20250222-03`
+- Description: 將台股即時報價改用 Fugle Realtime API，並保留證交所資料作為備援，同步補充環境變數與文件說明。
+- Date: 2025-02-22
+
+- Version Code: `LBT-20250223-02`
+- Description: 以日 K 蠟燭資料補齊台股即時報價缺漏的開高低收與昨收欄位，避免介面只顯示破折號。
+- Date: 2025-02-23
+
+- Version Code: `LBT-20250224-01`
+- Description: 強化台股即時報價的數值解析邏輯，支援證交所以破折號或全形字符標示的佔位符，避免開高低收顯示為破折號。
+- Date: 2025-02-24
+
+- Version Code: `LBT-20250224-02`
+- Description: 改善 Fugle 回應解析流程，優先採用成交價與交易時間並補齊多種欄位名稱，確保台股即時報價與最後更新時間維持最新狀態。
+- Date: 2025-02-24
+
+- Version Code: `LBT-20250225-01`
+- Description: 台股即時報價改以 TradingView 爬蟲與 Scanner API 為主要來源，Fugle 與證交所資料改列為次、三層備援以恢復最新價格欄位。
+- Date: 2025-02-25
+
+- Version Code: `LBT-20250225-02`
+- Description: 強化 TradingView 爬蟲時間戳處理，優先採用掃描 API 的成交時間並於缺漏時以抓取時間補齊，確保台股即時報價的「最後更新」貼近實際拉取時點。
+- Date: 2025-02-25
+
